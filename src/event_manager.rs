@@ -8,7 +8,7 @@ use serenity::{
 };
 use sqlx::{MySql, Pool};
 
-use crate::model::guild::{insert_new_guild, update_guild_name};
+use crate::{model::guild::{insert_new_guild, update_guild_name}, commands};
 
 pub struct BotEvents {
     pub pool: Pool<MySql>,
@@ -28,16 +28,17 @@ impl EventHandler for BotEvents {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
-            match command.defer_ephemeral(&ctx).await {
-                Ok(_) => {},
-                Err(why) => {
-                    println!("Error responding to command {why}");
-                    return;
-                }
+            if let Err(why) = match command.data.name.as_str() {
+                "ping" => commands::ping::run(&ctx, &command).await,
+                _ => commands::unimplemented(&ctx, &command).await
+            } {
+                println!("Error responding to command: {why}");
+                let _ = command.create_interaction_response(&ctx, |f| {
+                    return f.interaction_response_data(|f| {
+                        return f.ephemeral(true).content("Internal error occured.");
+                    })
+                }).await;
             }
-            let _ = command.edit_original_interaction_response(&ctx, |f| {
-                return f.content("Unimplemented!");
-            }).await;
 
         }
     }
@@ -58,12 +59,14 @@ impl EventHandler for BotEvents {
     async fn guild_update(&self, _ctx: Context, _old: Option<Guild>, new_incomplete: PartialGuild) {
         match update_guild_name(&new_incomplete, &self.pool).await {
             Ok(_) => {
-                println!("Updated guild: {}; new Name: {}", new_incomplete.id, new_incomplete.name);
-            },
+                println!(
+                    "Updated guild: {}; new Name: {}",
+                    new_incomplete.id, new_incomplete.name
+                );
+            }
             Err(why) => {
                 println!("Error updating guild: {why}");
             }
-
         }
     }
 

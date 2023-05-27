@@ -6,6 +6,7 @@ use sqlx::{MySql, MySqlPool, Pool};
 mod event_manager;
 mod model;
 mod state;
+mod commands;
 
 pub async fn create_sqlx_client(connection: &str) -> Result<Pool<MySql>, sqlx::Error> {
     return MySqlPool::connect(connection).await;
