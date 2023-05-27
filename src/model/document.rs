@@ -9,5 +9,5 @@ pub struct Document {
     pub title: String,
     pub date: DateTime<Utc>,
     pub image: String,
-    pub notified: bool,
+    pub notified: u8,
 }
