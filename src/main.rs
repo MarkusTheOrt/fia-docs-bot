@@ -22,7 +22,7 @@ async fn main() {
         std::env::var("DATABASE_URL"),
     ) {
         (Ok(token), Ok(connection)) => (token, connection),
-        (Err(why), Ok(_)) | (Ok(_), Err(why)) | (Err(why), Err(_)) => {
+        (Err(why), _) | (_, Err(why)) => {
             println!("Error reading from environment: {why}");
             return;
         }
@@ -31,7 +31,7 @@ async fn main() {
     let pool = match create_sqlx_client(&sqlx_connection).await {
         Ok(pool) => pool,
         Err(why) => {
-            println!("Error connection to database: {why}");
+            println!("Error connecting to database: {why}");
             return;
         }
     };

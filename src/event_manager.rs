@@ -1,4 +1,3 @@
-use chrono::Utc;
 use serenity::{
     async_trait,
     model::{
@@ -27,7 +26,21 @@ impl EventHandler for BotEvents {
             .await;
     }
 
-    async fn interaction_create(&self, _ctx: Context, _interaction: Interaction) {}
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::ApplicationCommand(command) = interaction {
+            match command.defer_ephemeral(&ctx).await {
+                Ok(_) => {},
+                Err(why) => {
+                    println!("Error responding to command {why}");
+                    return;
+                }
+            }
+            let _ = command.edit_original_interaction_response(&ctx, |f| {
+                return f.content("Unimplemented!");
+            }).await;
+
+        }
+    }
 
     async fn guild_create(&self, _ctx: Context, guild: Guild, is_new: bool) {
         if is_new {
