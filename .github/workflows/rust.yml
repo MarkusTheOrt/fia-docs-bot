@@ -17,4 +17,7 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     - name: Build
+      env:
+        DATABASE_URL: ${{ secrets.DATABASE_URL }}
       run: cargo build --verbose
+     
