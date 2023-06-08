@@ -1,3 +1,5 @@
+use std::process::exit;
+
 use serenity::{
     async_trait,
     model::{
@@ -8,7 +10,10 @@ use serenity::{
 };
 use sqlx::{MySql, Pool};
 
-use crate::{model::guild::{insert_new_guild, update_guild_name}, commands};
+use crate::{
+    commands,
+    model::guild::{insert_new_guild, update_guild_name},
+};
 
 pub struct BotEvents {
     pub pool: Pool<MySql>,
@@ -20,26 +25,54 @@ impl EventHandler for BotEvents {
         #[cfg(debug_assertions)]
         let _ = ctx
             .set_presence(
-                Some(Activity::playing("FIA Docs Bot DEV!")),
+                Some(Activity::playing("Development mode")),
                 OnlineStatus::Online,
             )
             .await;
+
+        let res = match ctx.http.get_current_application_info().await {
+            Ok(res) => res,
+            Err(why) => {
+                println!("error receiving Application Info: {why}");
+                exit(0x0100);
+            }
+        };
+
+        if let Err(why) = commands::ping::register(&ctx).await {
+            println!("Error registering command: {why}");
+            exit(0x0100);
+        }
+
+        if let Err(why) = commands::set_channel::register(&ctx).await {
+            println!("Error registering command: {why}");
+            exit(0x0100);
+        }
+
+        if let Err(why) = commands::unset_channel::register(&ctx).await {
+            println!("Error registering command: {why}");
+            exit(0x0100);
+        }
+        println!("All commands registered!");
+        println!("Started up {}#{}", res.name, res.id);
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::ApplicationCommand(command) = interaction {
             if let Err(why) = match command.data.name.as_str() {
                 "ping" => commands::ping::run(&ctx, &command).await,
-                _ => commands::unimplemented(&ctx, &command).await
+                "set-channel" => commands::set_channel::run(&self.pool, &ctx, &command).await,
+                "unset-channel" => commands::unset_channel::run(&self.pool, &ctx, &command).await,
+                _ => commands::unimplemented(&ctx, &command).await,
             } {
                 println!("Error responding to command: {why}");
-                let _ = command.create_interaction_response(&ctx, |f| {
-                    return f.interaction_response_data(|f| {
-                        return f.ephemeral(true).content("Internal error occured.");
+                let _ = command
+                    .create_interaction_response(&ctx, |f| {
+                        return f.interaction_response_data(|f| {
+                            return f.ephemeral(true).content("Internal error occured.");
+                        });
                     })
-                }).await;
+                    .await;
             }
-
         }
     }
 
