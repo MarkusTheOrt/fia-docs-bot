@@ -4,7 +4,7 @@ use serenity::model::prelude::{GuildId, ChannelId};
 
 #[derive(Serialize, Deserialize)]
 pub struct Thread {
-    guild: GuildId,
-    event: u64,
-    id: ChannelId
+    pub guild: GuildId,
+    pub event: u64,
+    pub id: ChannelId
 }

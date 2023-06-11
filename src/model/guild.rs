@@ -25,12 +25,11 @@ pub async fn insert_new_guild(
     };
 
     return sqlx::query!(
-        "INSERT INTO guilds(id, name, channel, notify_role, joined) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO guilds(id, name, joined) VALUES (?, ?, ?) ON DUPLICATE KEY update name = ?",
         new_guild.id,
         new_guild.name,
-        new_guild.channel,
-        new_guild.notify_role,
-        new_guild.joined
+        new_guild.joined,
+        new_guild.name
     )
     .execute(pool)
     .await;

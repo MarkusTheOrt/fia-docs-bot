@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 use event_manager::BotEvents;
 use serenity::prelude::GatewayIntents;
 use serenity::Client;
@@ -38,7 +41,12 @@ async fn main() {
     };
 
     let event_manager = BotEvents {
-        pool: pool.clone()
+        pool: pool.clone(),
+        f1_crawler_enabled: Arc::new(Mutex::new(true)),
+        f2_crawler_enabled: Arc::new(Mutex::new(true)),
+        f3_crawler_enabled: Arc::new(Mutex::new(true)),
+        wrc_crawler_enabled: Arc::new(Mutex::new(true)),
+        wrx_crawler_enabled: Arc::new(Mutex::new(true))
     };
 
     let mut client = Client::builder(discord_token, GatewayIntents::GUILDS)

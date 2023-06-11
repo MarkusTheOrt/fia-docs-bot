@@ -72,39 +72,35 @@ pub async fn run(
             return Ok(());
         }
     };
-    if let (CommandDataOptionValue::Channel(channel), CommandDataOptionValue::String(series)) =
+    if let (CommandDataOptionValue::Channel(ch), CommandDataOptionValue::String(series)) =
         (channel, series)
     {
         let guild = command.guild_id.as_ref().unwrap().as_u64();
 
         let res = sqlx::query!(
             "UPDATE guilds SET channel = ? WHERE id = ?",
-            channel.id.as_u64(),
+            ch.id.as_u64(),
             guild
         )
         .execute(pool)
         .await;
 
-        match res {
-            Err(why) => {
-                command
-                    .edit_original_interaction_response(&ctx, |msg| {
-                        return msg.content(format!("Error: {why}"));
-                    })
-                    .await?;
-            }
-            Ok(data) => {
-                command
-                    .edit_original_interaction_response(&ctx, |msg| {
-                        return msg.embed(|embed| {
-                            return embed
-                                .description(format!("Set {series}-channel to <#{}>", channel.id.as_u64()))
-                                .colour(0x00FF00);
-                        });
-                    })
-                    .await?;
-            }
+        if let Err(why) = res {
+            command
+                .edit_original_interaction_response(&ctx, |msg| {
+                    return msg.content(format!("Error: {why}"));
+                })
+                .await?;
         }
+        command
+            .edit_original_interaction_response(&ctx, |msg| {
+                return msg.embed(|embed| {
+                    return embed
+                        .description(format!("Set {series}-channel to <#{}>", ch.id.as_u64()))
+                        .colour(0x00FF00);
+                });
+            })
+            .await?;
     }
 
     return Ok(());

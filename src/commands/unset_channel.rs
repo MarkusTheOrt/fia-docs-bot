@@ -1,7 +1,7 @@
 use serenity::{
     model::{
         prelude::{
-            application_command::ApplicationCommandInteraction,
+            application_command::{ApplicationCommandInteraction, CommandDataOptionValue},
             command::{Command, CommandOptionType},
         },
         Permissions,
@@ -10,7 +10,7 @@ use serenity::{
 };
 use sqlx::{MySql, Pool};
 
-use super::set_channel::unwrap_option;
+use super::{set_channel::unwrap_option, set_options};
 
 pub async fn register(ctx: &Context) -> Result<Command, serenity::Error> {
     return Command::create_global_application_command(ctx, |cmd| {
@@ -19,12 +19,11 @@ pub async fn register(ctx: &Context) -> Result<Command, serenity::Error> {
             .description("Set the Channel of where to post new documents for a specific series.")
             .default_member_permissions(Permissions::ADMINISTRATOR)
             .create_option(|opt| {
-                return opt
+                return set_options(opt)
                     .name("series")
                     .description("Which series should not be posted anymore?")
                     .kind(CommandOptionType::String)
                     .required(true)
-                    .add_string_choice("Formula 1", "f1");
             });
     })
     .await;
@@ -83,7 +82,7 @@ pub async fn run(
         }
     };
 
-    if let Some(series) = unwrap_option(command.data.options.get(0)) {
+    if let Some(CommandDataOptionValue::String(series)) = unwrap_option(command.data.options.get(0)) {
         let query = sqlx::query!(
             "UPDATE guilds SET channel = NULL where id = ?",
             guild_id.as_u64()
@@ -96,10 +95,11 @@ pub async fn run(
                 command
                     .edit_original_interaction_response(ctx, |msg| {
                         return msg.embed(|embed| {
-                            return embed.description("unset F1 channel").colour(0x00FF00);
+                            return embed.description(format!("unset channel for `{series}`-series")).colour(0x00FF00);
                         });
                     })
                     .await?;
+                return Ok(());
             }
             Err(_) => {
                 command
@@ -120,10 +120,5 @@ pub async fn run(
             .await?;
     }
 
-    command
-        .edit_original_interaction_response(ctx, |msg| {
-            return msg.content("success, debug.");
-        })
-        .await?;
     return Ok(());
 }
