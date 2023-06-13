@@ -10,6 +10,7 @@ mod event_manager;
 mod model;
 mod state;
 mod commands;
+mod crawler;
 
 pub async fn create_sqlx_client(connection: &str) -> Result<Pool<MySql>, sqlx::Error> {
     return MySqlPool::connect(connection).await;
@@ -39,7 +40,7 @@ async fn main() {
             return;
         }
     };
-
+    println!("creating EVM");
     let event_manager = BotEvents {
         pool: pool.clone(),
         f1_crawler_enabled: Arc::new(Mutex::new(true)),
@@ -48,7 +49,7 @@ async fn main() {
         wrc_crawler_enabled: Arc::new(Mutex::new(true)),
         wrx_crawler_enabled: Arc::new(Mutex::new(true))
     };
-
+    println!("connecting EVM");
     let mut client = Client::builder(discord_token, GatewayIntents::GUILDS)
         .event_handler(event_manager)
         .await

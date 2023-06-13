@@ -27,6 +27,7 @@ pub struct BotEvents {
 #[async_trait]
 impl EventHandler for BotEvents {
     async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
+
         let res = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
             Err(why) => {
@@ -34,36 +35,45 @@ impl EventHandler for BotEvents {
                 exit(0x0100);
             }
         };
+        println!("got app info");
 
         if let Err(why) = commands::ping::register(&ctx).await {
             println!("Error registering command `ping`: {why}");
             exit(0x0100);
         }
+        println!("registered ping");
 
         if let Err(why) = commands::set_channel::register(&ctx).await {
             println!("Error registering command `set_channel`: {why}");
             exit(0x0100);
         }
+        println!("registered set_channel");
 
         if let Err(why) = commands::unset_channel::register(&ctx).await {
             println!("Error registering command `unset_channel`: {why}");
             exit(0x0100);
         }
 
+        println!("registered unset_channel");
+
         if let Err(why) = commands::set_role::register(&ctx).await {
             println!("Error registering command `set_role`: {why}");
             exit(0x0100);
         }
 
+        println!("registered set_role");
+
         if let Err(why) = commands::unset_role::register(&ctx).await {
             println!("Error registering command `unset_role`: {why}");
             exit(0x0100);
         }
+        println!("registered unset_role");
 
         if let Err(why) = commands::stop_crawler::register(&ctx).await {
             println!("Error registering command `stop_crawler`: {why}");
             exit(0x0100);
         }
+        println!("registered stop_crawler");
 
         println!("All commands registered!");
         println!("Started up {}#{}", res.name, res.id);
@@ -75,8 +85,8 @@ impl EventHandler for BotEvents {
                     *is_enabled
                 };
                 if !is_enabled {
-                    std::thread::sleep(Duration::from_secs(2));
-                    continue;
+                    println!("stopped crawling!");
+                    break;
                 }
 
                 println!("Crawler run");
@@ -93,7 +103,7 @@ impl EventHandler for BotEvents {
                 "set-channel" => commands::set_channel::run(&self.pool, &ctx, &command).await,
                 "unset-channel" => commands::unset_channel::run(&self.pool, &ctx, &command).await,
                 "set-role" => commands::set_role::run(&self.pool, &ctx, &command).await,
-                "stop-crawler" => commands::stop_crawler::run(&self, &ctx).await,
+                "stop-crawler" => commands::stop_crawler::run(&self, &ctx, &command).await,
                 _ => commands::unimplemented(&ctx, &command).await,
             } {
                 println!("Error responding to command: {why}");
