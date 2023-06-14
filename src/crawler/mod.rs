@@ -1,7 +1,17 @@
-use std::{error::Error as StdError, fmt::{Display, self}};
+use std::{
+    error::Error as StdError,
+    fmt::{self, Display},
+};
 
-use chrono::Utc;
-use html5ever::{tokenizer::{TokenSink, Tokenizer, TokenizerOpts, BufferQueue}, tendril::*};
+use chrono::{DateTime, Utc};
+use html5ever::{
+    tendril::*,
+    tokenizer::{
+        BufferQueue,
+        TagKind::{EndTag, StartTag},
+        Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
+    },
+};
 use reqwest::StatusCode;
 use serenity::async_trait;
 
@@ -25,41 +35,54 @@ pub struct F1Crawler;
 struct TempDoc {
     url: Option<String>,
     title: Option<String>,
-    date: Option<Utc>,
+    date: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum ParserState {
+    NoDoc,
+    CurrentEvent,
+    CurrentDoc,
+    CurrentDocTitle,
+    CurrentDocDate,
 }
 
 /// Parses documents from https://fia.com/documents
 pub struct FIAParser<'a> {
     pub documents: &'a mut Vec<Document>,
     current_doc: TempDoc,
+    pub event_title: &'a mut String,
+    state: ParserState,
 }
 
 #[derive(Debug)]
 pub struct Error {
-    pub inner: Box<Inner>
+    pub inner: Box<Inner>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum Kind {
     Http,
-    Parser
+    Parser,
 }
 
 #[derive(Debug)]
 pub struct Inner {
     pub kind: Kind,
-    pub source: Option<Box<dyn StdError + Send + Sync>>
+    pub source: Option<Box<dyn StdError + Send + Sync>>,
 }
 
 impl Error {
-    pub(crate) fn new<E>(kind: Kind, source: Option<E>) -> Self 
-    where E: Into<Box<dyn StdError + Send + Sync>> {
+    pub(crate) fn new<E>(kind: Kind, source: Option<E>) -> Self
+    where
+        E: Into<Box<dyn StdError + Send + Sync>>,
+    {
         return Self {
             inner: Box::new(Inner {
                 kind,
-                source: source.map(Into::into)
-            })
-        }
+                source: source.map(Into::into),
+            }),
+        };
     }
 }
 
@@ -73,7 +96,7 @@ impl Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind() {
             Kind::Http => f.write_str("HTTP Error"),
-            Kind::Parser => f.write_str("Parser Error")
+            Kind::Parser => f.write_str("Parser Error"),
         }
     }
 }
@@ -81,19 +104,14 @@ impl Display for Error {
 #[derive(Debug)]
 pub enum CrawlerErr {
     Reqwest(reqwest::Error),
-    Internal(Error)
+    Internal(Error),
 }
-
 
 impl Display for CrawlerErr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Reqwest(inner) => {
-                return fmt::Display::fmt(&inner, f)
-            },
-            Self::Internal(inner) => {
-                return fmt::Display::fmt(&inner, f)
-            }
+            Self::Reqwest(inner) => return fmt::Display::fmt(&inner, f),
+            Self::Internal(inner) => return fmt::Display::fmt(&inner, f),
         }
     }
 }
@@ -108,7 +126,7 @@ impl StdError for CrawlerErr {
     fn source(&self) -> Option<&(dyn StdError + 'static)> {
         match self {
             Self::Reqwest(inner) => Some(inner),
-            Self::Internal(inner) => Some(inner)
+            Self::Internal(inner) => Some(inner),
         }
     }
 }
@@ -131,15 +149,15 @@ impl Crawler for F1Crawler {
     const DATA_URL: &'static str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2023-2042";
     async fn fetch_data(&self) -> Result<String, CrawlerErr> {
         let request = reqwest::get(Self::DATA_URL).await?;
-            
+
         if request.status() != StatusCode::OK {
-            return Err(Error::new(Kind::Http, "StatusCode Not 200".into()).into())
+            return Err(Error::new(Kind::Http, "StatusCode Not 200".into()).into());
         }
 
         return match request.text().await {
             Ok(data) => Ok(data),
-            Err(why) => Err(CrawlerErr::Reqwest(why))
-        }
+            Err(why) => Err(CrawlerErr::Reqwest(why)),
+        };
     }
 
     async fn parse_documents(&self) -> Result<Vec<Self::DocType>, CrawlerErr> {
@@ -147,12 +165,14 @@ impl Crawler for F1Crawler {
         // Most Events do not create more than 60 documents, so this should be
         // speedy and fine!
         let mut documents = Vec::with_capacity(60);
-
+        let mut title = String::default();
         let parser = FIAParser {
             documents: &mut documents,
             current_doc: TempDoc::default(),
+            state: ParserState::NoDoc,
+            event_title: &mut title,
         };
-        
+
         let mut tendril = ByteTendril::new();
         data.as_bytes().read_to_tendril(&mut tendril).unwrap();
         let mut queue = BufferQueue::new();
@@ -169,9 +189,65 @@ impl<'a> TokenSink for FIAParser<'a> {
 
     fn process_token(
         &mut self,
-        token: html5ever::tokenizer::Token,
+        token: Token,
         _line_number: u64,
     ) -> html5ever::tokenizer::TokenSinkResult<Self::Handle> {
-        todo!()
+        match token {
+            Token::TagToken(token) => match token.kind {
+                StartTag => {
+                    if token.name.as_ref() == "div" {
+                        if let Some(class) = token
+                            .attrs
+                            .iter()
+                            .find(|attr| attr.name.local.as_ref() == "class")
+                        {
+                            if class.value.as_ref() == "event-title active" {
+                                self.state = ParserState::CurrentEvent;
+                            }
+                            if self.state == ParserState::CurrentEvent
+                                && class.value.as_ref() == "title"
+                            {
+                                self.state = ParserState::CurrentDocTitle;
+                            }
+                        }
+                    }
+                }
+                EndTag => {
+                    match token.name.as_ref() {
+                        "div" => {
+
+                        },
+                        "a" => {
+                            
+                        },
+                        _ => {}
+                    }
+                }
+            },
+            Token::CharacterTokens(chars) => match self.state {
+                ParserState::NoDoc => {}
+                ParserState::CurrentEvent => {
+                    let trimmed = chars.trim();
+                    if trimmed.len() > 1 {
+                        *self.event_title = chars.as_ref().clone().to_owned();
+                    }
+                }
+                ParserState::CurrentDocDate => {
+                    let trimmed = chars.trim();
+                    if trimmed.len() > 1 {
+                        self.current_doc.date = Some(Utc::now());
+                    }
+                }
+                ParserState::CurrentDocTitle => {
+                    let trimmed = chars.trim();
+                    if trimmed.len() > 1 {
+                        self.current_doc.title = Some(trimmed.to_owned());
+                    }
+                }
+                ParserState::CurrentDoc => {}
+            },
+            _ => {}
+        }
+        return TokenSinkResult::Continue;
     }
 }

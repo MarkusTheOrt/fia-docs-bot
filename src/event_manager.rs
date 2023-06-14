@@ -8,7 +8,7 @@ use serenity::{
     prelude::{Context, EventHandler},
 };
 use sqlx::{MySql, Pool};
-use tokio::{sync::Mutex, task::JoinHandle};
+use tokio::{sync::Mutex};
 
 use crate::{
     commands,
