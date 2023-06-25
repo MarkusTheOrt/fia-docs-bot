@@ -7,7 +7,7 @@ use super::series::Series;
 pub struct Event {
     pub id: Option<u64>,
     pub series: Series,
-    pub year: i32,
+    pub year: u32,
     pub name: String,
     pub created: DateTime<Utc>
 }
