@@ -72,6 +72,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "aws-sign-v4"
+version = "0.2.0"
+source = "git+https://github.com/MarkusTheOrt/aws-sign-v4#c21847c59320323b416c01cfcaacf3331037cf30"
+dependencies = [
+ "chrono",
+ "hex",
+ "http",
+ "ring",
+ "sha256",
+ "url",
+]
+
+[[package]]
 name = "axum"
 version = "0.6.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -379,6 +392,7 @@ dependencies = [
 name = "fia-docs-api"
 version = "0.1.0"
 dependencies = [
+ "aws-sign-v4",
  "axum",
  "axum-macros",
  "chrono",
@@ -1518,6 +1532,16 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "sha256"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08a975c1bc0941703000eaf232c4d8ce188d8d5408d6344b6b2c8c6262772828"
+dependencies = [
+ "hex",
+ "sha2",
 ]
 
 [[package]]

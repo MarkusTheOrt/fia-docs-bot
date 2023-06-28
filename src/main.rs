@@ -1,6 +1,17 @@
+use std::num::NonZeroI16;
+
 use axum::{routing::get, Router, Server};
 
-use routes::{current, fallback, home, season::season, event::events, series_current, series::series};
+use chrono::Utc;
+use html5ever::{
+    tendril::{ByteTendril, ReadExt},
+    tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
+};
+use middleware::parser::HTMLParser;
+use routes::{
+    current, event::events, fallback, home, season::season, series::series,
+    series_current,
+};
 use sqlx::mysql::MySqlPoolOptions;
 
 mod bodies;
@@ -20,7 +31,27 @@ async fn main() {
         .expect("Database Connection failed");
 
     drop(database_connect);
-    
+
+    let _thread = tokio::spawn(async move {
+        let test = reqwest::get("https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2023-2042?nocache").await.expect("fia.com");
+
+        let bytes = test.text().await.expect("stringy");
+
+        let mut tendril = ByteTendril::new();
+        let _ = bytes.as_bytes().read_to_tendril(&mut tendril);
+        let mut input = BufferQueue::new();
+        input.push_back(tendril.try_reinterpret().unwrap());
+        let mut parser_season = middleware::parser::Season {
+            year: NonZeroI16::new(2023).unwrap(),
+            events: vec![],
+        };
+        let sink = HTMLParser::new(&mut parser_season);
+        let opts = TokenizerOpts::default();
+        let mut tok = Tokenizer::new(sink, opts);
+        let _ = tok.feed(&mut input);
+        tok.end();
+    });
+
     let router = Router::new()
         .route("/", get(home))
         .route("/current", get(current))
