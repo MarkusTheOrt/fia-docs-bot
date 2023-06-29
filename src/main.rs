@@ -1,19 +1,13 @@
-use std::num::NonZeroI16;
-
 use axum::{routing::get, Router, Server};
 
-use chrono::Utc;
-use html5ever::{
-    tendril::{ByteTendril, ReadExt},
-    tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
-};
-use middleware::parser::HTMLParser;
+use middleware::magick::check_magick;
 use routes::{
     current, event::events, fallback, home, season::season, series::series,
     series_current,
 };
 use sqlx::mysql::MySqlPoolOptions;
 
+use crate::middleware::{magick::clear_tmp_dir, runner::runner};
 mod bodies;
 mod middleware;
 mod model;
@@ -21,6 +15,15 @@ mod routes;
 
 #[tokio::main]
 async fn main() {
+    if !check_magick() {
+        eprintln!("Couldn't find imagemagick! exiting...");
+        std::process::exit(1);
+    }
+    if let Err(why) = clear_tmp_dir() {
+        eprintln!("Couldn't create tmp dir: {why}");
+        std::process::exit(1);
+    }
+
     drop(dotenvy::dotenv());
     let database_connect =
         std::env::var("DATABASE_URL").expect("Database URL not set.");
@@ -32,25 +35,9 @@ async fn main() {
 
     drop(database_connect);
 
-    let _thread = tokio::spawn(async move {
-        let test = reqwest::get("https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2023-2042?nocache").await.expect("fia.com");
-
-        let bytes = test.text().await.expect("stringy");
-
-        let mut tendril = ByteTendril::new();
-        let _ = bytes.as_bytes().read_to_tendril(&mut tendril);
-        let mut input = BufferQueue::new();
-        input.push_back(tendril.try_reinterpret().unwrap());
-        let mut parser_season = middleware::parser::Season {
-            year: NonZeroI16::new(2023).unwrap(),
-            events: vec![],
-        };
-        let sink = HTMLParser::new(&mut parser_season);
-        let opts = TokenizerOpts::default();
-        let mut tok = Tokenizer::new(sink, opts);
-        let _ = tok.feed(&mut input);
-        tok.end();
-    });
+    println!("starting application...");
+    let database_1 = database.clone();
+    //let _thread = tokio::spawn(async move { runner(&database_1).await });
 
     let router = Router::new()
         .route("/", get(home))

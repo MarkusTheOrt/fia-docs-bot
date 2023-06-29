@@ -1,5 +1,5 @@
-use chrono::{Utc, DateTime};
-use serde::{Serialize, Deserialize};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use sqlx::{Encode, MySql};
 
 use super::series::Series;
@@ -15,13 +15,11 @@ pub struct Image {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Document {
     pub id: Option<u64>,
+    pub event: u64,
     pub title: String,
     pub series: Series,
     pub created: DateTime<Utc>,
     pub url: String,
     pub mirror: String,
     pub notified: bool,
-    pub previews: Vec<Image>
 }
-
-

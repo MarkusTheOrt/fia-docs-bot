@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use super::series::Series;
 
@@ -9,5 +9,5 @@ pub struct Event {
     pub series: Series,
     pub year: u32,
     pub name: String,
-    pub created: DateTime<Utc>
+    pub created: DateTime<Utc>,
 }
