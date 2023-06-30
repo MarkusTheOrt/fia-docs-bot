@@ -5,18 +5,32 @@ use routes::{
     current, event::events, fallback, home, season::season, series::series,
     series_current,
 };
-use sqlx::mysql::MySqlPoolOptions;
+use sqlx::{mysql::MySqlPoolOptions, Pool, MySql};
 
-use crate::middleware::{magick::clear_tmp_dir, runner::runner};
+use crate::middleware::{
+    magick::{clear_tmp_dir, create_tmp_dir},
+    runner::runner,
+};
 mod bodies;
 mod middleware;
 mod model;
 mod routes;
 
+
+#[tokio::main]
+async fn run_main(database: Pool<MySql>) {
+
+    runner(&database).await;
+}
+
 #[tokio::main]
 async fn main() {
     if !check_magick() {
         eprintln!("Couldn't find imagemagick! exiting...");
+        std::process::exit(1);
+    }
+    if let Err(why) = create_tmp_dir() {
+        eprintln!("Couldn't create tmp dir: {why}");
         std::process::exit(1);
     }
     if let Err(why) = clear_tmp_dir() {
@@ -35,29 +49,31 @@ async fn main() {
 
     drop(database_connect);
 
-    println!("starting application...");
     let database_1 = database.clone();
-    //let _thread = tokio::spawn(async move { runner(&database_1).await });
 
-    let router = Router::new()
-        .route("/", get(home))
-        .route("/current", get(current))
-        .route("/current/", get(current))
-        .route("/:series/current", get(series_current))
-        .route("/:series/current/", get(series_current))
-        .route("/:series", get(series))
-        .route("/:series/", get(series))
-        .route("/:series/events/", get(series))
-        .route("/:series/events", get(series))
-        .route("/:series/:year/", get(season))
-        .route("/:series/:year", get(season))
-        .route("/:series/:year/:event", get(events))
-        .route("/:series/:year/:event/", get(events))
-        .with_state(database)
-        .fallback(fallback);
+    std::thread::spawn(|| {
+        run_main(database_1);
+    });
 
-    Server::bind(&"127.0.0.1:1276".parse().unwrap())
-        .serve(router.into_make_service())
-        .await
-        .unwrap();
+    println!("starting application...");
+        let router = Router::new()
+            .route("/", get(home))
+            .route("/:series/current", get(series_current))
+            .route("/:series/current/", get(series_current))
+            .route("/:series", get(series))
+            .route("/:series/", get(series))
+            .route("/:series/:year/", get(season))
+            .route("/:series/:year", get(season))
+            .route("/:series/:year/:event", get(events))
+            .route("/:series/:year/:event/", get(events))
+            .with_state(database)
+            .fallback(fallback);
+
+        Server::bind(&"127.0.0.1:1276".parse().unwrap())
+            .serve(router.into_make_service())
+            .await
+            .unwrap();
+    
+
+
 }

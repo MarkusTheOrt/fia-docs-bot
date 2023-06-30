@@ -10,6 +10,7 @@ pub struct Image {
     pub url: String,
     pub page: u8,
     pub document: u64,
+    pub created: DateTime<Utc>
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

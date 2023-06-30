@@ -67,6 +67,11 @@ pub fn run_magick(
 
 pub fn get_converted_files(input: &str) -> Vec<PathBuf> {
     let mut output = vec![];
+    if let Ok(initial) = PathBuf::from_str(&format!("./tmp/{input}/0.jpg")) {
+        if initial.exists() {
+            output.push(initial);
+        }
+    }
     for i in 0..=100 {
         let path = match PathBuf::from_str(&format!("./tmp/{input}/0-{i}.jpg"))
         {

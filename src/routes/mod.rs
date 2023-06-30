@@ -13,7 +13,7 @@ use crate::model::{event::Event, series::Series};
 
 pub async fn home() -> (StatusCode, HeaderMap) {
     let mut headers = HeaderMap::new();
-    headers.append("location", "/current".parse().unwrap());
+    headers.append("location", "/f1/current".parse().unwrap());
     return (StatusCode::MOVED_PERMANENTLY, headers);
 }
 

@@ -17,16 +17,10 @@ use std::{
     time::Duration,
 };
 
-pub async fn runner(pool: &Pool<MySql>) -> ! {
-    let mut first_run = true;
+pub async fn runner(pool: &Pool<MySql>) {
     loop {
         println!("runner running!");
-        if first_run == true {
-            first_run = false;
-        } else {
-            // FIAs default cache time is 179 seconds.
-            std::thread::sleep(Duration::from_secs(180));
-        }
+        std::thread::sleep(Duration::from_secs(180));
 
         let season = match get_season("https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2023-2042?nocache").await {
             Ok(season) => season,
@@ -115,7 +109,6 @@ pub async fn runner(pool: &Pool<MySql>) -> ! {
                         }
                         Ok(data) => data
                     };
-
                 let files = match run_magick(
                     file.to_str().unwrap(),
                     &format!("doc_{i}"),
@@ -150,7 +143,7 @@ pub async fn runner(pool: &Pool<MySql>) -> ! {
                     let url = format!(
                         "https://fia.ort.dev/{}/{}/{}-{}.jpg",
                         year,
-                        ev.title.as_ref().unwrap(),
+                        urlencoding::encode(ev.title.as_ref().unwrap()),
                         inserted_doc.last_insert_id(),
                         j
                     );
@@ -201,7 +194,7 @@ pub async fn runner(pool: &Pool<MySql>) -> ! {
                             Ok(_) => {
                                 match insert_image(inserted_doc.last_insert_id(), j as u32, url, pool).await {
                                         Err(why) => eprintln!("Error inserting: {why}"),
-                                        Ok(_) => println!("Inserted and uploaded my man!")
+                                        Ok(_) => {}
                                     }
                             },
                         },
@@ -224,7 +217,6 @@ async fn insert_image(
     url: String,
     pool: &Pool<MySql>
 ) -> Result<(), Box<dyn Error>>{
-    
     sqlx::query!("INSERT INTO images (document, url, pagenum) VALUES (?, ?, ?)",
         doc_id,
         url,
