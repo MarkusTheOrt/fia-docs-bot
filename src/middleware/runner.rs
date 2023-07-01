@@ -17,12 +17,17 @@ use std::{
     time::Duration,
 };
 
+const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2023-2042";
+
 pub async fn runner(pool: &Pool<MySql>) {
     loop {
         println!("runner running!");
+        #[cfg(not(debug_assertions))]
         std::thread::sleep(Duration::from_secs(180));
+        #[cfg(debug_assertions)]
+        std::thread::sleep(Duration::from_secs(5));
 
-        let season = match get_season("https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2023-2042?nocache").await {
+        let season = match get_season(F1_DOCS_URL).await {
             Ok(season) => season,
             Err(why) => { eprintln!("Error fetching: {why}"); continue; }
         };
@@ -300,7 +305,6 @@ async fn insert_event(
         name: event.title.as_ref().unwrap().clone(),
         created: Utc::now(),
     };
-
     let series: String = db_event.series.into();
     let res: MySqlQueryResult = sqlx::query_unchecked!("INSERT INTO events (series, year, name, created, current) VALUES (?, ?, ?, ?, 0)",
     series,

@@ -1,5 +1,13 @@
-use crate::model::{series::Series, event::Event, document::{Document, Image}};
-use axum::{extract::{Path, State}, Json};
+use crate::model::{
+    document::{Document, Image},
+    event::Event,
+    series::Series,
+};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
+use chrono::{DateTime, Utc};
 use reqwest::StatusCode;
 use serde::Serialize;
 use sqlx::{MySql, Pool};
@@ -7,13 +15,55 @@ use sqlx::{MySql, Pool};
 #[derive(Serialize)]
 pub struct ReturnType {
     event: Event,
-    documents: Vec<ImageDoc>
+    documents: Vec<ImageDoc>,
 }
 
 #[derive(Serialize)]
 pub struct ImageDoc {
-    document: Document,
-    images: Vec<Image>
+   pub document: Document,
+   pub images: Vec<Image>,
+}
+
+#[derive(Debug, Clone)]
+struct JoinQuery {
+    id: u64,
+    name: String,
+    series: Series,
+    year: u32,
+    created: DateTime<Utc>,
+    document_id: u64,
+    document_created: DateTime<Utc>,
+    document_title: String,
+    document_url: String,
+    document_mirror: String,
+    image_id: u64,
+    image_created: DateTime<Utc>,
+    image_url: String,
+    page: u8,
+}
+
+impl From<JoinQuery> for (Document, Image) {
+    fn from(value: JoinQuery) -> Self {
+        let document = Document {
+            id: Some(value.document_id),
+            event: value.id,
+            title: value.document_title,
+            series: value.series,
+            created: value.document_created,
+            url: value.document_url,
+            mirror: value.document_mirror,
+            notified: true,
+        };
+        let image = Image {
+            id: Some(value.image_id),
+            url: value.image_url,
+            page: value.page,
+            document: value.document_id,
+            created: value.image_created,
+        };
+        return (document, image);
+
+    }
 }
 
 pub async fn events(
@@ -23,76 +73,82 @@ pub async fn events(
     if event.len() > 128 {
         return Err((StatusCode::BAD_REQUEST, "Invalid event identifier."));
     }
+    
     let series: String = series.into();
-    let event: Event = match sqlx::query_as_unchecked!(
-        Event,
-        r#"SELECT 
-    `id` as `id?`,
-    created,
-    name,
-    series,
-    year
-    FROM events where 
-    series = ? AND 
-    year = ? AND
-    name = ?"#,
-        series,
+    let query: Vec<JoinQuery> = match sqlx::query_as_unchecked!(
+        JoinQuery,
+        r#"SELECT
+            events.id as id,
+            events.name as name,
+            events.series as series,
+            events.year as year,
+            events.created as created,
+            documents.id as document_id,
+            documents.title as document_title,
+            documents.created as document_created,
+            documents.mirror as document_mirror,
+            documents.url as document_url,
+            images.id as image_id,
+            images.created as image_created,
+            images.url as image_url,
+            images.pagenum as page
+            FROM events
+            JOIN documents on documents.event = events.id
+            JOIN images on images.document = documents.id
+            WHERE events.year = ? AND events.series = ? AND events.name = ?
+            ORDER BY events.created DESC, document_created DESC, page"#,
         year,
+        series,
         event
     )
-    .fetch_optional(&pool)
-    .await {
-            Ok(Some(data)) => data,
-            Ok(None) => {
-                return Err((StatusCode::NOT_FOUND, "Event not found."));
-            },
-            Err(why) => {
-                eprintln!("Error: {why}");
-                return Err((StatusCode::BAD_GATEWAY, "Database error."));
-            }
-        };
+    .fetch_all(&pool)
+    .await
+    {
+        Ok(data) => data,
+        Err(why) => {
+            eprintln!("Error: {why}");
+            return Err((StatusCode::BAD_GATEWAY, "Database Error"));
+        },
+    };
+
     
-    let docs: Vec<Document> = match sqlx::query_as_unchecked!(Document, r#"
-        SELECT `id` as `id?`,
-        created,
-        mirror,
-        event,
-        notified,
-        series,
-        title,
-        url
-        FROM documents WHERE
-        event = ?
-        ORDER BY created DESC
-    "#, event.id.unwrap()).fetch_all(&pool).await {
-            Ok(data) => data,
-            Err(why) => {
-                eprintln!("Error: {why}");
-                return Err((StatusCode::BAD_GATEWAY, "Database error."));
-            }
-        };
-        
-    let mut image_docs = Vec::with_capacity(docs.len());
-    for document in docs {
-        let images: Vec<Image> = match sqlx::query_as_unchecked!(Image, r#"
-            SELECT 
-            `id` as `id?`,
-            document,
-            url,
-            pagenum as page,
-            created
-            FROM images 
-            WHERE document = ?
-            ORDER BY pagenum ASC
-        "#, document.id.unwrap()).fetch_all(&pool).await {
-            Ok(data) => data,
-            Err(why) => {
-                eprintln!("Error: {why}");
-                return Err((StatusCode::BAD_GATEWAY, "Database error."));
-            }
-        };
-        image_docs.push(ImageDoc { document, images });
+    let first = query.first();
+    if first.is_none() {
+        return Err((StatusCode::NOT_FOUND, "Event not found."));
     }
     
-    return Ok(Json(ReturnType { event, documents: image_docs }));
+    let first = first.unwrap();
+    
+    let event = Event {
+        id: Some(first.id),
+        series: first.series,
+        year: first.year,
+        name: first.name.clone(),
+        created: first.created, 
+    };
+
+    let mut return_data: Vec<ImageDoc> = Vec::with_capacity(query.len() / 2);
+    for data in query.into_iter() {
+        if let Some(prev_entry) = return_data.last_mut() {
+            if prev_entry.document.id.is_some_and(|f| f == data.document_id) {
+                prev_entry.images.push(Image {
+                    id: Some(data.image_id),
+                    url: data.image_url,
+                    page: data.page,
+                    document: data.document_id,
+                    created: data.image_created,
+                });
+                continue;
+            }
+        }
+        let (document, image): (Document, Image) = data.into();
+        return_data.push(ImageDoc { document, images: vec![image] });
+
+    }
+
+
+    return Ok(Json(ReturnType {
+        event,
+        documents: return_data,
+    }));
 }

@@ -9,7 +9,7 @@ use axum::{
 };
 use sqlx::Pool;
 
-use crate::model::{event::Event, series::Series};
+use crate::model::series::Series;
 
 pub async fn home() -> (StatusCode, HeaderMap) {
     let mut headers = HeaderMap::new();
@@ -26,31 +26,4 @@ pub async fn series_current(
     State(database): State<Pool<sqlx::MySql>>,
 ) -> String {
     return format!("series: {series}");
-}
-
-pub async fn current(
-    State(database): State<Pool<sqlx::MySql>>
-) -> Result<(StatusCode, Json<Event>), (StatusCode, Json<&'static str>)> {
-    let data = match sqlx::query_as_unchecked!(
-        Event,
-        r#"SELECT `id` as `id?` ,`name`,`year`,`created`,`series`
-    FROM events WHERE `current` = 1"#
-    )
-    .fetch_optional(&database)
-    .await
-    {
-        Ok(Some(data)) => data,
-        Ok(None) => {
-            return Err((StatusCode::NOT_FOUND, Json("No Active event.")));
-        },
-        Err(why) => {
-            eprintln!("{why}");
-            return Err((
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json("Database Error"),
-            ));
-        },
-    };
-
-    return Ok((StatusCode::OK, Json(data)));
 }

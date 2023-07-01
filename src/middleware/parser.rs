@@ -1,7 +1,11 @@
 use std::num::NonZeroI16;
 
 use html5ever::{
-    tokenizer::{Tag, TagKind::StartTag, Token, TokenSink, TokenSinkResult},
+    tokenizer::{
+        Tag,
+        TagKind::{EndTag, StartTag},
+        Token, TokenSink, TokenSinkResult,
+    },
     Attribute,
 };
 
@@ -134,6 +138,7 @@ impl<'a> TokenSink for HTMLParser<'a> {
                         },
                         _ => {},
                     },
+
                     _ => {},
                 }
             },
@@ -146,7 +151,7 @@ impl<'a> TokenSink for HTMLParser<'a> {
                         self.season.events.push(event);
                     }
                     let event = ParserEvent {
-                        season: NonZeroI16::new(2023),
+                        season: Some(self.season.year),
                         title: Some(chars.trim().to_owned()),
                         documents: Vec::with_capacity(60),
                     };
@@ -174,6 +179,11 @@ impl<'a> TokenSink for HTMLParser<'a> {
                 },
                 ParserState::Document => {},
                 _ => {},
+            },
+            Token::EOFToken => {
+                if let Some(event) = self.event.take() {
+                    self.season.events.push(event);
+                }
             },
             _ => {},
         }
