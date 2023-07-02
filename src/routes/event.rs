@@ -107,7 +107,7 @@ pub async fn events(
         Ok(data) => data,
         Err(why) => {
             eprintln!("Error: {why}");
-            return Err((StatusCode::BAD_GATEWAY, "Database Error"));
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Database Error."));
         },
     };
 

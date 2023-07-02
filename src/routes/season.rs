@@ -1,13 +1,13 @@
-use axum::extract::{Path, State};
+use axum::{extract::{Path, State}, Json};
+use reqwest::StatusCode;
 use sqlx::{MySql, Pool};
 
 use crate::model::{event::Event, series::Series};
-use sqlx::types::chrono::DateTime;
 
 pub async fn season(
     Path((series, year)): Path<(Series, u32)>,
     State(database): State<Pool<MySql>>,
-) -> String {
+) -> Result<Json<Vec<Event>>, (StatusCode, &'static str)> {
 
     let series: String = series.into();
     let data: Vec<Event> = match sqlx::query_as_unchecked!(
@@ -20,10 +20,15 @@ pub async fn season(
     .await
     {
         Err(why) => {
-            return format!("Error: {why}");
+            eprintln!("Database Error: {why}");
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, "Database Error."));
         },
         Ok(data) => data,
     };
-
-    return serde_json::to_string_pretty(&data).unwrap();
+    
+    if data.is_empty() {
+        return Err((StatusCode::NOT_FOUND, "not found."));
+    }
+    
+    return Ok(Json(data));
 }
