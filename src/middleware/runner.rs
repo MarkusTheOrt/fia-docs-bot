@@ -94,8 +94,7 @@ async fn f1_runner(
 
         for (i, doc) in ev.documents.iter().enumerate() {
             if let Some(_) = docs.iter().find(|f| {
-                return f.title == doc.title.as_ref().unwrap().as_str()
-                    && f.url == doc.url.as_ref().unwrap().as_str();
+                return f.url == doc.url.as_ref().unwrap().as_str();
             }) {
                 continue;
             }
