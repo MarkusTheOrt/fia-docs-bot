@@ -2,8 +2,13 @@ use super::{
     magick::{clear_tmp_dir, run_magick},
     parser::{HTMLParser, ParserEvent},
 };
-use crate::model::{document::Document, event::Event, series::Series};
+use crate::model::{
+    document::{Document, Image},
+    event::Event,
+    series::Series,
+};
 use aws_sign_v4::AwsSign;
+use chrono::DateTime;
 use html5ever::{
     tendril::{ByteTendril, ReadExt},
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
@@ -11,10 +16,13 @@ use html5ever::{
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use sqlx::types::chrono::Utc;
 use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
-use std::io::{Read, Write};
 use std::{
     error::Error, fs::File, num::NonZeroI16, path::PathBuf, str::FromStr,
     time::Duration,
+};
+use std::{
+    io::{Read, Write},
+    time::UNIX_EPOCH,
 };
 
 const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2023-2042";
@@ -22,14 +30,79 @@ const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/
 const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/championships/fia-formula-3-championship-1012";
 const YEAR: i16 = 2023;
 
+struct LocalCache {
+    pub documents: Vec<MinDoc>,
+    pub last_populated: DateTime<Utc>,
+}
+
+impl Default for LocalCache {
+    fn default() -> Self {
+        Self {
+            documents: vec![],
+            last_populated: DateTime::from(UNIX_EPOCH),
+        }
+    }
+}
+
+struct MinDoc {
+    pub url: String,
+}
+
+async fn populate_cache(
+    pool: &Pool<MySql>,
+    cache: &mut LocalCache,
+    series: Series,
+) {
+    let delta = Utc::now() - cache.last_populated;
+    // lets revalidate the cache once a day.
+    if delta.num_days() == 1 {
+        return;
+    }
+    let series_str: String = series.into();
+    let docs: Vec<MinDoc> = match sqlx::query_as!(
+        MinDoc,
+        r#"
+    SELECT url
+    FROM documents
+    WHERE series = ? AND YEAR(created) = ?"#,
+        series_str,
+        YEAR
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(data) => data,
+        Err(why) => {
+            eprintln!("Error popoulating cache2: {why}");
+            return;
+        },
+    };
+
+    cache.documents = docs;
+    cache.last_populated = Utc::now();
+    println!("Repopulated cache!");
+    println!("{series} cache size: {}", cache.documents.len());
+}
+
 pub async fn runner(pool: &Pool<MySql>) {
+    let mut f1_local_cache = LocalCache::default();
+    let mut f2_local_cache = LocalCache::default();
+    let mut f3_local_cache = LocalCache::default();
+
     loop {
         let start = Utc::now();
         println!("Scanning for documents.");
-        // disabled because the server version is still running.
-        f1_runner(pool, YEAR, F1_DOCS_URL, Series::F1).await;
-        f1_runner(pool, YEAR, F2_DOCS_URL, Series::F2).await;
-        f1_runner(pool, YEAR, F3_DOCS_URL, Series::F3).await;
+        populate_cache(pool, &mut f1_local_cache, Series::F1).await;
+        populate_cache(pool, &mut f2_local_cache, Series::F2).await;
+        populate_cache(pool, &mut f3_local_cache, Series::F3).await;
+        {
+            f1_runner(pool, YEAR, F1_DOCS_URL, Series::F1, &mut f1_local_cache)
+                .await;
+            f1_runner(pool, YEAR, F2_DOCS_URL, Series::F2, &mut f2_local_cache)
+                .await;
+            f1_runner(pool, YEAR, F3_DOCS_URL, Series::F3, &mut f3_local_cache)
+                .await;
+        }
         let run = (Utc::now() - start).to_std().unwrap();
         // lets only wait the 180 seconds max.
         std::thread::sleep(
@@ -45,6 +118,7 @@ async fn f1_runner(
     year: i16,
     url: &str,
     series: Series,
+    cache: &mut LocalCache,
 ) {
     let season = match get_season(url, NonZeroI16::new(year).unwrap()).await {
         Ok(season) => season,
@@ -80,24 +154,13 @@ async fn f1_runner(
                     continue;
                 }
             };
-        let docs: Vec<Document> = match sqlx::query_as_unchecked!(
-                Document,
-                "SELECT `id` as `id?`, event, url, title, created, notified, series, mirror FROM documents WHERE event = ?",
-                db_event.id
-            ).fetch_all(pool).await {
-                Ok(data) => data,
-                Err(why) => {
-                    eprintln!("sql Error: {why}");
-                    return;
-                }
-            };
-
         for (i, doc) in ev.documents.iter().enumerate() {
-            if let Some(_) = docs.iter().find(|f| {
-                return f.url == doc.url.as_ref().unwrap().as_str();
+            if let Some(_) = cache.documents.iter().find(|f| {
+                return f.url == *doc.url.as_ref().unwrap();
             }) {
                 continue;
             }
+            println!("doc not found!");
             let (title, url, _) = (
                 doc.title.as_ref().unwrap(),
                 doc.url.as_ref().unwrap(),
@@ -136,6 +199,10 @@ async fn f1_runner(
                         }
                         Ok(data) => data
                     };
+            println!("adding doc {title}");
+            cache.documents.push(MinDoc {
+                url: url.clone(),
+            });
             let files =
                 match run_magick(file.to_str().unwrap(), &format!("doc_{i}")) {
                     Err(why) => {
