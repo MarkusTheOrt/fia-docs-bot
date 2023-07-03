@@ -55,7 +55,7 @@ async fn populate_cache(
 ) {
     let delta = Utc::now() - cache.last_populated;
     // lets revalidate the cache once a day.
-    if delta.num_days() == 1 {
+    if delta.num_days() < 1 {
         return;
     }
     let series_str: String = series.into();
