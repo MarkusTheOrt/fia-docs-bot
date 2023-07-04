@@ -1,8 +1,15 @@
+use std::{collections::HashMap, sync::{Mutex, Arc, RwLock}, time::UNIX_EPOCH};
+
 use axum::{routing::get, Router, Server};
 
+use chrono::{DateTime, Utc};
 use middleware::magick::check_magick;
+use model::series::Series;
 use routes::{
-    event::events, fallback, home, season::season, series::series,
+    event::{events, ReturnType},
+    fallback, home,
+    season::season,
+    series::series,
     series_current,
 };
 use sqlx::{mysql::MySqlPoolOptions, MySql, Pool};
@@ -19,6 +26,20 @@ mod routes;
 #[tokio::main]
 async fn run_main(database: Pool<MySql>) {
     runner(&database).await;
+}
+
+type RetCacheMap = HashMap<(Series, u32, String), ReturnType>;
+type RetCacheState = Arc<RwLock<RetCache>>;
+
+pub struct RetCache {
+    cache: RetCacheMap,
+    last_populated: DateTime<Utc>,
+}
+
+#[derive(Clone)]
+pub struct State {
+    pool: Pool<MySql>,
+    cache: RetCacheState
 }
 
 #[tokio::main]
@@ -53,6 +74,16 @@ async fn main() {
         run_main(database_1);
     });
 
+    let cache: RetCacheState = Arc::new(RwLock::new(RetCache {
+        last_populated: DateTime::from(UNIX_EPOCH),
+        cache: RetCacheMap::default(),
+    }));
+
+    let state = State {
+        pool: database,
+        cache
+    };
+
     println!("starting application...");
     let router = Router::new()
         .route("/", get(home))
@@ -64,7 +95,7 @@ async fn main() {
         .route("/:series/:year", get(season))
         .route("/:series/:year/:event", get(events))
         .route("/:series/:year/:event/", get(events))
-        .with_state(database)
+        .with_state(state)
         .fallback(fallback);
 
     Server::bind(&"127.0.0.1:1276".parse().unwrap())

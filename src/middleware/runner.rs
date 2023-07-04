@@ -3,7 +3,6 @@ use super::{
     parser::{HTMLParser, ParserEvent},
 };
 use crate::model::{
-    document::{Document, Image},
     event::Event,
     series::Series,
 };
@@ -30,6 +29,10 @@ const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/
 const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/championships/fia-formula-3-championship-1012";
 const YEAR: i16 = 2023;
 
+struct MinDoc {
+    pub url: String,
+}
+
 struct LocalCache {
     pub documents: Vec<MinDoc>,
     pub last_populated: DateTime<Utc>,
@@ -42,10 +45,6 @@ impl Default for LocalCache {
             last_populated: DateTime::from(UNIX_EPOCH),
         }
     }
-}
-
-struct MinDoc {
-    pub url: String,
 }
 
 async fn populate_cache(
@@ -73,7 +72,7 @@ async fn populate_cache(
     {
         Ok(data) => data,
         Err(why) => {
-            eprintln!("Error popoulating cache2: {why}");
+            eprintln!("Error populating cache: {why}");
             return;
         },
     };
@@ -103,11 +102,11 @@ pub async fn runner(pool: &Pool<MySql>) {
             f1_runner(pool, YEAR, F3_DOCS_URL, Series::F3, &mut f3_local_cache)
                 .await;
         }
-        let run = (Utc::now() - start).to_std().unwrap();
-        // lets only wait the 180 seconds max.
+        let runner_time = (Utc::now() - start).to_std().unwrap();
+
         std::thread::sleep(
             Duration::from_secs(180)
-                .checked_sub(run)
+                .checked_sub(runner_time)
                 .unwrap_or(Duration::from_secs(1)),
         );
     }
