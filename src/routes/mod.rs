@@ -23,7 +23,6 @@ pub async fn fallback() -> (StatusCode, Json<&'static str>) {
 
 pub async fn series_current(
     Path(series): Path<Series>,
-    State(database): State<Pool<sqlx::MySql>>,
 ) -> String {
     
     return format!("series: {series}");

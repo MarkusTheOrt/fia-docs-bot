@@ -6,9 +6,9 @@ use crate::model::{event::Event, series::Series};
 
 pub async fn season(
     Path((series, year)): Path<(Series, u32)>,
-    State(database): State<Pool<MySql>>,
+    State(state): State<crate::State>,
 ) -> Result<Json<Vec<Event>>, (StatusCode, &'static str)> {
-
+    let database = &state.pool;
     let series: String = series.into();
     let data: Vec<Event> = match sqlx::query_as_unchecked!(
         Event,
@@ -16,7 +16,7 @@ pub async fn season(
         series,
         year
     )
-    .fetch_all(&database)
+    .fetch_all(database)
     .await
     {
         Err(why) => {

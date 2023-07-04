@@ -1,7 +1,10 @@
-use crate::model::{
-    document::{Document, Image},
-    event::Event,
-    series::Series,
+use crate::{
+    model::{
+        document::{Document, Image},
+        event::Event,
+        series::Series,
+    },
+    RetCacheState,
 };
 use axum::{
     extract::{Path, State},
@@ -12,16 +15,16 @@ use reqwest::StatusCode;
 use serde::Serialize;
 use sqlx::{MySql, Pool};
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ReturnType {
     event: Event,
     documents: Vec<ImageDoc>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ImageDoc {
-   pub document: Document,
-   pub images: Vec<Image>,
+    pub document: Document,
+    pub images: Vec<Image>,
 }
 
 #[derive(Debug, Clone)]
@@ -62,19 +65,31 @@ impl From<JoinQuery> for (Document, Image) {
             created: value.image_created,
         };
         return (document, image);
-
     }
 }
 
 pub async fn events(
-    Path((series, year, event)): Path<(Series, u32, String)>,
-    State(pool): State<Pool<MySql>>,
-) -> Result<Json<ReturnType>, (StatusCode, &'static str)> {
-    if event.len() > 128 {
+    Path((series, year, event_name)): Path<(Series, u32, String)>,
+    State(state): State<crate::State>,
+) -> Result<(StatusCode, Json<ReturnType>), (StatusCode, &'static str)> {
+    let pool = &state.pool;
+    let cache = state.cache;
+    if event_name.len() > 128 {
         return Err((StatusCode::BAD_REQUEST, "Invalid event identifier."));
     }
-    
-    let series: String = series.into();
+
+    {
+        let cv = cache.read().unwrap();
+        if (Utc::now() - cv.last_populated).num_seconds() < 180 {
+            if let Some(cache_data) =
+                cv.cache.get(&(series, year, event_name.clone()))
+            {
+                return Ok((StatusCode::OK, Json(cache_data.clone())));
+            }
+        }
+    }
+
+    let series_str: String = series.into();
     let query: Vec<JoinQuery> = match sqlx::query_as_unchecked!(
         JoinQuery,
         r#"SELECT
@@ -98,10 +113,10 @@ pub async fn events(
             WHERE events.year = ? AND events.series = ? AND events.name = ?
             ORDER BY events.created DESC, document_created DESC, page"#,
         year,
-        series,
-        event
+        series_str,
+        event_name
     )
-    .fetch_all(&pool)
+    .fetch_all(pool)
     .await
     {
         Ok(data) => data,
@@ -111,20 +126,19 @@ pub async fn events(
         },
     };
 
-    
     let first = query.first();
     if first.is_none() {
         return Err((StatusCode::NOT_FOUND, "Event not found."));
     }
-    
+
     let first = first.unwrap();
-    
+
     let event = Event {
         id: Some(first.id),
         series: first.series,
         year: first.year,
         name: first.name.clone(),
-        created: first.created, 
+        created: first.created,
     };
 
     let mut return_data: Vec<ImageDoc> = Vec::with_capacity(query.len() / 2);
@@ -142,13 +156,23 @@ pub async fn events(
             }
         }
         let (document, image): (Document, Image) = data.into();
-        return_data.push(ImageDoc { document, images: vec![image] });
-
+        return_data.push(ImageDoc {
+            document,
+            images: vec![image],
+        });
     }
 
-
-    return Ok(Json(ReturnType {
+    let ret = ReturnType {
         event,
         documents: return_data,
-    }));
+    };
+    {
+        let mut cw = cache.write().unwrap();
+        cw.cache.insert(
+            (series, year, event_name), ret.clone()
+        );
+        cw.last_populated = Utc::now();
+    }
+
+    return Ok((StatusCode::OK, Json(ret)));
 }

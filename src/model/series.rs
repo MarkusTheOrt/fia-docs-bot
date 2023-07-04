@@ -5,7 +5,7 @@ use sqlx::{
 };
 use sqlx::types::chrono::DateTime;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub enum Series {
     #[serde(rename = "f1", alias = "F1")]
     F1,
