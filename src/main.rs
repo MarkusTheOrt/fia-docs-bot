@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::{Mutex, Arc, RwLock}, time::UNIX_EPOCH};
+use std::{collections::HashMap, sync::{Arc, RwLock}, time::UNIX_EPOCH};
 
 use axum::{routing::get, Router, Server};
 

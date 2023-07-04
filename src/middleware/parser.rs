@@ -1,11 +1,7 @@
 use std::num::NonZeroI16;
 
 use html5ever::{
-    tokenizer::{
-        Tag,
-        TagKind::{EndTag, StartTag},
-        Token, TokenSink, TokenSinkResult,
-    },
+    tokenizer::{Tag, TagKind::StartTag, Token, TokenSink, TokenSinkResult},
     Attribute,
 };
 

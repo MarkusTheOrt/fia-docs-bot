@@ -1,9 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{
-    error::BoxDynError, mysql::MySqlTypeInfo, Decode, Encode, MySql, Type,
-    TypeInfo, encode::IsNull, database::HasArguments,
-};
-use sqlx::types::chrono::DateTime;
+use sqlx::{error::BoxDynError, Decode, TypeInfo};
 
 #[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub enum Series {
@@ -32,7 +28,7 @@ impl From<String> for Series {
             "f2" | "F2" => Series::F2,
             "f3" | "F3" => Series::F3,
             _ => Series::F1,
-        }
+        };
     }
 }
 

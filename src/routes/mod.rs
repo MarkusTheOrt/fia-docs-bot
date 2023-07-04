@@ -3,11 +3,10 @@ pub mod season;
 pub mod series;
 
 use axum::{
-    extract::{Path, State},
+    extract::Path,
     http::{HeaderMap, StatusCode},
     Json,
 };
-use sqlx::Pool;
 
 use crate::model::series::Series;
 
@@ -21,9 +20,6 @@ pub async fn fallback() -> (StatusCode, Json<&'static str>) {
     return (StatusCode::NOT_FOUND, Json("not found"));
 }
 
-pub async fn series_current(
-    Path(series): Path<Series>,
-) -> String {
-    
+pub async fn series_current(Path(series): Path<Series>) -> String {
     return format!("series: {series}");
 }

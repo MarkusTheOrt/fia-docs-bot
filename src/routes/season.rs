@@ -1,6 +1,5 @@
 use axum::{extract::{Path, State}, Json};
 use reqwest::StatusCode;
-use sqlx::{MySql, Pool};
 
 use crate::model::{event::Event, series::Series};
 
