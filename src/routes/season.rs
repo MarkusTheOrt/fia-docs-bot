@@ -1,4 +1,7 @@
-use axum::{extract::{Path, State}, Json};
+use axum::{
+    extract::{Path, State},
+    Json,
+};
 use reqwest::StatusCode;
 
 use crate::model::{event::Event, series::Series};
@@ -24,10 +27,10 @@ pub async fn season(
         },
         Ok(data) => data,
     };
-    
+
     if data.is_empty() {
         return Err((StatusCode::NOT_FOUND, "not found."));
     }
-    
+
     return Ok(Json(data));
 }

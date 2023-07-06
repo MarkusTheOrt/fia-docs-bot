@@ -25,8 +25,8 @@ impl Series {
     }
 
     pub fn f3() -> Self {
-        Self { 
-            kind: crate::model::series::Series::F3, 
+        Self {
+            kind: crate::model::series::Series::F3,
             name: "FIA Formula 3", 
             data_source: "https://www.fia.com/documents/season/season-2023-2042/championships/fia-formula-3-championship-1012"
         }

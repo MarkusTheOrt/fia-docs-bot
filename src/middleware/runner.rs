@@ -2,10 +2,7 @@ use super::{
     magick::{clear_tmp_dir, run_magick},
     parser::{HTMLParser, ParserEvent},
 };
-use crate::model::{
-    event::Event,
-    series::Series,
-};
+use crate::model::{event::Event, series::Series};
 use aws_sign_v4::AwsSign;
 use chrono::DateTime;
 use html5ever::{
@@ -35,12 +32,14 @@ struct MinDoc {
 
 struct LocalCache {
     pub documents: Vec<MinDoc>,
+    pub events: Vec<Event>,
     pub last_populated: DateTime<Utc>,
 }
 
 impl Default for LocalCache {
     fn default() -> Self {
         Self {
+            events: vec![],
             documents: vec![],
             last_populated: DateTime::from(UNIX_EPOCH),
         }
@@ -77,6 +76,15 @@ async fn populate_cache(
         },
     };
 
+    let events: Vec<Event> = match sqlx::query_as_unchecked!(Event,
+    r#"SELECT `id` as `id?`, year, series, name, created FROM events where year = ?"#, YEAR).fetch_all(pool).await {
+            Ok(data) => data,
+            Err(why) => {
+                eprintln!("Error populating events: {why}");
+                return;
+        }
+    };
+
     cache.documents = docs;
     cache.last_populated = Utc::now();
     println!("Repopulated cache!");
@@ -94,6 +102,8 @@ pub async fn runner(pool: &Pool<MySql>) {
         populate_cache(pool, &mut f1_local_cache, Series::F1).await;
         populate_cache(pool, &mut f2_local_cache, Series::F2).await;
         populate_cache(pool, &mut f3_local_cache, Series::F3).await;
+
+        #[cfg(not(debug_assertions))]
         {
             f1_runner(pool, YEAR, F1_DOCS_URL, Series::F1, &mut f1_local_cache)
                 .await;
@@ -129,7 +139,14 @@ async fn f1_runner(
     let series_str: String = series.into();
     for ev in season.events {
         let year: i16 = season.year.into();
-        let db_event: Event = match sqlx::query_as_unchecked!(
+        let cache_event = cache.events.iter().find(|f| {
+            ev.title.as_ref().is_some_and(|t| *t == f.name)
+                && ev.season.is_some_and(|s| i16::from(s) == f.year as i16)
+        });
+
+        let db_event: Event = match cache_event {
+            Some(db_event) => db_event.clone(),
+            None => match sqlx::query_as_unchecked!(
                 Event,
                 "SELECT `id` as `id?`, name, year, created, series FROM events where name = ? AND year = ? AND series = ?",
                 ev.title,
@@ -138,21 +155,28 @@ async fn f1_runner(
             )
                 .fetch_optional(pool)
                 .await {
-                Ok(Some(db_event)) => db_event,
+                Ok(Some(db_event)) => {
+                        cache.events.push(db_event.clone());
+                        db_event
+                    },
                 Ok(None) => {
                     match insert_event(pool, year, &ev, series).await {
                         Err(why) => {
                             eprintln!("Error creating event: {why}");
                             return;
                         },
-                        Ok(event) => event
+                        Ok(event) => {
+                                cache.events.push(event.clone());
+                                event
+                            }
                     }
                 },
                 Err(why) => {
                     eprintln!("sqlx Error: {why}");
                     continue;
                 }
-            };
+            }
+        };
         for (i, doc) in ev.documents.iter().enumerate() {
             if let Some(_) = cache.documents.iter().find(|f| {
                 return f.url == *doc.url.as_ref().unwrap();

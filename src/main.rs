@@ -1,4 +1,8 @@
-use std::{collections::HashMap, sync::{Arc, RwLock}, time::UNIX_EPOCH};
+use std::{
+    collections::HashMap,
+    sync::{Arc, RwLock},
+    time::UNIX_EPOCH,
+};
 
 use axum::{routing::get, Router, Server};
 
@@ -39,7 +43,7 @@ pub struct RetCache {
 #[derive(Clone)]
 pub struct State {
     pool: Pool<MySql>,
-    cache: RetCacheState
+    cache: RetCacheState,
 }
 
 #[tokio::main]
@@ -81,7 +85,7 @@ async fn main() {
 
     let state = State {
         pool: database,
-        cache
+        cache,
     };
 
     println!("starting application...");
