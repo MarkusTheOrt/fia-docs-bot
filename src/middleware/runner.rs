@@ -84,7 +84,7 @@ async fn populate_cache(
                 return;
         }
     };
-
+    cache.events = events;
     cache.documents = docs;
     cache.last_populated = Utc::now();
     println!("Repopulated cache!");
