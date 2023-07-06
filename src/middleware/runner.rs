@@ -312,11 +312,28 @@ async fn f1_runner(
                     },
                 }
             }
+            match mark_doc_done(inserted_doc.last_insert_id(), pool).await {
+                Ok(_) => {},
+                Err(why) => {
+                    println!("Error marking doc done: {why}");
+                }
+            }
         }
         if let Err(why) = clear_tmp_dir() {
             eprintln!("couldn't clear temp dir: {why}");
         }
     }
+}
+
+async fn mark_doc_done(
+    doc_id: u64,
+    pool: &Pool<MySql>,
+) -> Result<(), Box<dyn Error>> {
+    sqlx::query!("UPDATE documents SET done = 1 WHERE id = ?", doc_id)
+        .execute(pool)
+        .await?;
+
+    return Ok(());
 }
 
 async fn insert_image(
