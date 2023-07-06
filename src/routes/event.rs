@@ -74,7 +74,7 @@ pub async fn events(
         return Err((StatusCode::BAD_REQUEST, "Invalid event identifier."));
     }
 
-    let event_name = event_name.replace('-', " ");
+    let event_name = event_name.replace('-', " ").to_lowercase();
 
     {
         let cv = cache.read().unwrap();
