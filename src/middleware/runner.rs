@@ -76,19 +76,34 @@ async fn populate_cache(
         },
     };
 
-    let events: Vec<Event> = match sqlx::query_as_unchecked!(Event,
-    r#"SELECT `id` as `id?`, year, series, name, created FROM events where year = ?"#, YEAR).fetch_all(pool).await {
-            Ok(data) => data,
-            Err(why) => {
-                eprintln!("Error populating events: {why}");
-                return;
-        }
+    let events: Vec<Event> = match sqlx::query_as_unchecked!(
+        Event,
+        r#"SELECT 
+        `id` as `id?`, 
+        year, 
+        series, 
+        name, 
+        created 
+        FROM
+        events where year = ? AND 
+        series = ?"#,
+        YEAR,
+        series_str
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(data) => data,
+        Err(why) => {
+            eprintln!("Error populating events: {why}");
+            return;
+        },
     };
     cache.events = events;
     cache.documents = docs;
     cache.last_populated = Utc::now();
     println!("Repopulated cache!");
-    println!("{series} cache size: {}", cache.documents.len());
+    println!("{series} events: {}, docs: {}", cache.events.len(), cache.documents.len());
 }
 
 pub async fn runner(pool: &Pool<MySql>) {
@@ -316,7 +331,7 @@ async fn f1_runner(
                 Ok(_) => {},
                 Err(why) => {
                     println!("Error marking doc done: {why}");
-                }
+                },
             }
         }
         if let Err(why) = clear_tmp_dir() {
