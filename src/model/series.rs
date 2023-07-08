@@ -1,3 +1,4 @@
+use std::fmt::{self, Formatter};
 use std::{io::Write, str::FromStr};
 
 use serde::{Deserialize, Serialize};
@@ -9,6 +10,16 @@ pub enum RacingSeries {
     F1,
     F2,
     F3,
+}
+
+impl fmt::Display for RacingSeries {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::F1 => return write!(f, "f1"),
+            Self::F2 => return write!(f, "f2"),
+            Self::F3 => return write!(f, "f3")
+        }
+    }
 }
 
 impl<'r> Decode<'r, sqlx::MySql> for RacingSeries {

@@ -12,7 +12,7 @@ use serenity::{
 use sqlx::{MySql, Pool};
 
 use crate::{
-    commands::{set, unimplemented},
+    commands::{set::{self, run}, unimplemented},
     model::guild::{insert_new_guild, update_guild_name},
 };
 
@@ -39,21 +39,21 @@ impl EventHandler for BotEvents {
             }
         };
 
-        {
-            let mut fut = vec![];
-
-            if let Ok(commands) = ctx.http().get_global_commands().await {
-                for command in commands {
-                    fut.push(ctx.http.delete_global_command(command.id));
-                }
-            }
-
-            for fut in join_all(fut).await {
-                if let Err(why) = fut {
-                    println!("error removing command: {why}");
-                }
-            }
-        }
+        //{
+        //    let mut fut = vec![];
+        //
+        //    if let Ok(commands) = ctx.http().get_global_commands().await {
+        //        for command in commands {
+        //            fut.push(ctx.http.delete_global_command(command.id));
+        //        }
+        //    }
+        //
+        //    for fut in join_all(fut).await {
+        //        if let Err(why) = fut {
+        //            println!("error removing command: {why}");
+        //        }
+        //    }
+        //}
 
         {
             if let Err(why) = ctx.http.create_global_command(&set::register()).await {
@@ -78,10 +78,10 @@ impl EventHandler for BotEvents {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         match interaction {
             Interaction::Command(cmd) => {
-                if let Err(why) = match cmd.data.name {
-                    _ => unimplemented(&ctx, cmd),
+                if let Err(why) = match cmd.data.name.as_str() {
+                    "settings" => run(&self.pool, &ctx, cmd).await, 
+                    _ => unimplemented(&ctx, cmd).await,
                 }
-                .await
                 {
                     println!("cmd error: {why}")
                 }
