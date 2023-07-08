@@ -13,7 +13,7 @@ use sqlx::{MySql, Pool};
 
 use crate::{
     commands::{set::{self, run}, unimplemented},
-    model::guild::{insert_new_guild, update_guild_name},
+    model::guild::{insert_new_guild, update_guild_name}, runner::runner,
 };
 
 pub struct BotEvents {
@@ -38,6 +38,12 @@ impl EventHandler for BotEvents {
                 exit(0x0100);
             }
         };
+        
+        let thread_ctx = ctx.clone();
+        let thread_db_pool = self.pool.clone();
+        std::thread::spawn(move || {
+            runner(thread_ctx, thread_db_pool);
+        });
 
         //{
         //    let mut fut = vec![];

@@ -7,6 +7,7 @@ mod commands;
 mod event_manager;
 mod model;
 mod state;
+mod runner;
 
 pub async fn create_sqlx_client(connection: &str) -> Result<Pool<MySql>, sqlx::Error> {
     return MySqlPool::connect(connection).await;
