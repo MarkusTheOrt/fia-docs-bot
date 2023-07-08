@@ -1,24 +1,60 @@
-use std::str::FromStr;
+use std::{io::Write, str::FromStr};
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use sqlx::{Encode, MySql};
+use sqlx::decode::Decode;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum RacingSeries {
     F1,
     F2,
     F3,
-    WRX,
-    WRC
 }
+
+impl<'r> Decode<'r, sqlx::MySql> for RacingSeries {
+    fn decode(
+        value: <sqlx::MySql as sqlx::database::HasValueRef<'r>>::ValueRef,
+    ) -> Result<Self, sqlx::error::BoxDynError> {
+        let variant = <String as Decode<MySql>>::decode(value)?;
+        let series: RacingSeries = variant.into();
+        return Ok(series);
+    }
+}
+
+impl<'q> Encode<'q, MySql> for RacingSeries {
+    fn encode_by_ref(
+        &self,
+        buf: &mut <MySql as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
+    ) -> sqlx::encode::IsNull {
+        match match self {
+            RacingSeries::F1 => buf.write_all(b"f1"),
+            RacingSeries::F2 => buf.write_all(b"f2"),
+            RacingSeries::F3 => buf.write_all(b"f3"),
+        } {
+            Err(_) => return sqlx::encode::IsNull::Yes,
+            _ => {}
+        }
+        return sqlx::encode::IsNull::No;
+    }
+}
+
 impl From<&String> for RacingSeries {
     fn from(value: &String) -> Self {
         match value.to_lowercase().as_str() {
             "f1" | "formula1" => return Self::F1,
             "f2" | "formula2" => return Self::F2,
             "f3" | "formula3" => return Self::F3,
-            "wrx" | "world rally cross" => return Self::WRX,
-            "wrc" | "world rally championship" => return Self::WRC,
-            _ => panic!("cannot parse this value.")
+            _ => panic!("cannot parse this value."),
+        }
+    }
+}
+
+impl From<RacingSeries> for String {
+    fn from(value: RacingSeries) -> Self {
+        match value {
+            RacingSeries::F1 => return "f1".to_owned(),
+            RacingSeries::F2 => return "f2".to_owned(),
+            RacingSeries::F3 => return "f3".to_owned(),
         }
     }
 }
@@ -29,9 +65,7 @@ impl From<String> for RacingSeries {
             "f1" | "formula1" => return Self::F1,
             "f2" | "formula2" => return Self::F2,
             "f3" | "formula3" => return Self::F3,
-            "wrx" | "world rally cross" => return Self::WRX,
-            "wrc" | "world rally championship" => return Self::WRC,
-            _ => panic!("cannot parse this value.")
+            _ => panic!("cannot parse this value."),
         }
     }
 }
@@ -44,18 +78,7 @@ impl FromStr for RacingSeries {
             "f1" | "formula1" => Ok(Self::F1),
             "f2" | "formula2" => Ok(Self::F2),
             "f3" | "formula3" => Ok(Self::F3),
-            "wrx" | "world rally cross" => Ok(Self::WRX),
-            "wrc" | "world rally championship" => Ok(Self::WRC),
-            _ => Err("Not Found".to_owned())
+            _ => Err("Not Found".to_owned()),
         }
     }
-}
-
-/// This struct represents a racing series (F1, F2, F3, WRC, etc...)
-/// NOTE: THIS IS CURRENTLY NOT IN USE!
-#[derive(Serialize, Deserialize)]
-pub struct Series {
-    pub id: u64,
-    pub name: String,
-    pub short_handle: String,
 }

@@ -1,16 +1,12 @@
-use std::sync::Arc;
-
-use tokio::sync::Mutex;
 use event_manager::BotEvents;
-use serenity::prelude::GatewayIntents;
-use serenity::Client;
 use sqlx::{MySql, MySqlPool, Pool};
 
+use serenity::{client::ClientBuilder, prelude::*};
+
+mod commands;
 mod event_manager;
 mod model;
 mod state;
-mod commands;
-mod crawler;
 
 pub async fn create_sqlx_client(connection: &str) -> Result<Pool<MySql>, sqlx::Error> {
     return MySqlPool::connect(connection).await;
@@ -40,22 +36,21 @@ async fn main() {
             return;
         }
     };
-    println!("creating EVM");
-    let event_manager = BotEvents {
-        pool: pool.clone(),
-        f1_crawler_enabled: Arc::new(Mutex::new(true)),
-        f2_crawler_enabled: Arc::new(Mutex::new(true)),
-        f3_crawler_enabled: Arc::new(Mutex::new(true)),
-        wrc_crawler_enabled: Arc::new(Mutex::new(true)),
-        wrx_crawler_enabled: Arc::new(Mutex::new(true))
-    };
-    println!("connecting EVM");
-    let mut client = Client::builder(discord_token, GatewayIntents::GUILDS)
-        .event_handler(event_manager)
-        .await
-        .expect("Client to be created");
 
+    let event_manager = BotEvents { pool: pool.clone() };
+
+    let mut client =
+        match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
+        .event_handler(event_manager)
+        .await {
+            Ok(client) => client,
+            Err(why) => {
+                println!("Error creting client: {why}");
+                return;
+            }
+        };
     if let Err(why) = client.start().await {
-        println!("Error whilst running client: {why}");
+        println!("Error running client: {why}");
     }
+    
 }

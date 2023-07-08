@@ -17,7 +17,7 @@ pub async fn insert_new_guild(
     pool: &Pool<MySql>,
 ) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
     let new_guild = DbGuild {
-        id: guild.id.as_u64().clone(),
+        id: guild.id.get(),
         name: guild.name.clone(),
         channel: None,
         notify_role: None,
@@ -42,7 +42,7 @@ pub async fn update_guild_name(
     return sqlx::query!(
         "UPDATE guilds SET name = ? WHERE id = ?",
         guild.name,
-        guild.id.as_u64()
+        guild.id.get()
     )
     .execute(pool)
     .await;
