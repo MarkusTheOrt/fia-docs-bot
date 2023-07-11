@@ -1,7 +1,11 @@
+use std::sync::{Arc, Mutex};
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serenity::model::prelude::{Guild, PartialGuild};
-use sqlx::{Pool, MySql};
+use sqlx::{MySql, Pool};
+
+use crate::event_manager::{CachedGuild, GuildCache};
 
 #[derive(Serialize, Deserialize)]
 pub struct DbGuild {
@@ -15,6 +19,7 @@ pub struct DbGuild {
 pub async fn insert_new_guild(
     guild: &Guild,
     pool: &Pool<MySql>,
+    guild_cache: &Arc<Mutex<GuildCache>>,
 ) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
     let new_guild = DbGuild {
         id: guild.id.get(),
@@ -23,6 +28,11 @@ pub async fn insert_new_guild(
         notify_role: None,
         joined: Utc::now(),
     };
+
+    {
+        let mut cache = guild_cache.lock().unwrap();
+        cache.cache.push(CachedGuild::new(new_guild.id));
+    }
 
     return sqlx::query!(
         "INSERT INTO guilds(id, name, joined) VALUES (?, ?, ?) ON DUPLICATE KEY update name = ?",
@@ -47,4 +57,3 @@ pub async fn update_guild_name(
     .execute(pool)
     .await;
 }
-

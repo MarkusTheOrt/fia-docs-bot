@@ -1,3 +1,5 @@
+use std::sync::{Mutex, Arc};
+
 use serenity::{
     all::{
         ChannelType, CommandInteraction,
@@ -13,7 +15,7 @@ use serenity::{
 };
 use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
 
-use crate::model::series::RacingSeries;
+use crate::{model::series::RacingSeries, event_manager::GuildCache};
 
 pub fn register() -> CreateCommand {
     return CreateCommand::new("settings")
@@ -67,6 +69,7 @@ pub async fn run(
     pool: &Pool<MySql>,
     ctx: &Context,
     cmd: CommandInteraction,
+    cache: &Arc<Mutex<GuildCache>>
 ) -> Result<(), serenity::Error> {
     if cmd.guild_id.is_none() {
         let builder = CreateInteractionResponse::Message(
@@ -88,9 +91,9 @@ pub async fn run(
     if let Some(command) = subcommand {
         if let ResolvedValue::SubCommand(options) = command.value {
             let rv = match command.name {
-                "f1" => series_command(RacingSeries::F1, pool, &cmd, options).await,
-                "f2" => series_command(RacingSeries::F2, pool, &cmd, options).await,
-                "f3" => series_command(RacingSeries::F2, pool, &cmd, options).await,
+                "f1" => series_command(RacingSeries::F1, pool, &cmd, options, cache).await,
+                "f2" => series_command(RacingSeries::F2, pool, &cmd, options, cache).await,
+                "f3" => series_command(RacingSeries::F3, pool, &cmd, options, cache).await,
                 _ => {
                     let builder = CreateInteractionResponseFollowup::new()
                         .ephemeral(true)
@@ -132,6 +135,7 @@ async fn series_command<'a>(
     pool: &Pool<MySql>,
     cmd: &CommandInteraction,
     options: Vec<ResolvedOption<'_>>,
+    cache: &Arc<Mutex<GuildCache>>
 ) -> Result<String, String> {
     let options = resolve_options(options);
     if options.is_none() {
@@ -143,6 +147,22 @@ async fn series_command<'a>(
         Some(role) => Some(role.id.get()),
         None => None,
     };
+
+    // Write the results into our cache so we don't have to query the database every 5 seconds..u
+    {
+        let mut cache = cache.lock().unwrap();
+        if let Some(guild) = cache.cache.iter_mut().find(|p| p.id == guild.get()) {
+            let series = match series {
+                RacingSeries::F1 => &mut guild.f1,
+                RacingSeries::F2 => &mut guild.f2,
+                RacingSeries::F3 => &mut guild.f3
+            };
+            series.role = role_id.clone();
+            series.channel = Some(channel.id.get());
+            series.use_threads = threads;
+        }
+    }
+
     match series_query(
         pool,
         series,

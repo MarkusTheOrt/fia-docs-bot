@@ -1,23 +1,81 @@
-use std::process::exit;
+use std::{process::exit, sync::Arc, time::UNIX_EPOCH};
+use std::sync::Mutex;
 
+use chrono::{DateTime, Utc};
 use serenity::{
     all::{
         ActivityType, Guild, GuildId, Interaction, PartialGuild, ResumedEvent, UnavailableGuild,
     },
     async_trait,
-    futures::future::join_all,
     prelude::*,
 };
 
 use sqlx::{MySql, Pool};
 
+use crate::runner::AllGuild;
 use crate::{
-    commands::{set::{self, run}, unimplemented},
-    model::guild::{insert_new_guild, update_guild_name}, runner::runner,
+    commands::{
+        set::{self, run},
+        unimplemented,
+    },
+    model::guild::{insert_new_guild, update_guild_name},
+    runner::runner,
 };
+
+#[derive(Clone)]
+pub struct SeriesSettings {
+    pub channel: Option<u64>,
+    pub use_threads: bool,
+    pub role: Option<u64>,
+}
+
+#[derive(Clone)]
+pub struct CachedGuild {
+    pub id: u64,
+    pub f1: SeriesSettings,
+    pub f2: SeriesSettings,
+    pub f3: SeriesSettings,
+}
+
+impl From<AllGuild> for CachedGuild {
+    fn from(value: AllGuild) -> Self {
+        return Self {
+            id: value.id,
+            f1: SeriesSettings { channel: value.f1_channel, use_threads: value.f1_threads, role: value.f1_role },
+            f2: SeriesSettings { channel: value.f2_channel, use_threads: value.f2_threads, role: value.f2_role },
+            f3: SeriesSettings { channel: value.f3_channel, use_threads: value.f3_threads, role: value.f3_role }
+        };
+    }
+}
+
+pub struct GuildCache {
+    pub last_populated: DateTime<Utc>,
+    pub cache: Vec<CachedGuild>,
+}
+
+impl CachedGuild {
+    pub fn new(id: u64) -> Self {
+        return Self {
+            id,
+            f1: SeriesSettings { channel: None, use_threads: true, role: None },
+            f2: SeriesSettings { channel: None, use_threads: true, role: None },
+            f3: SeriesSettings { channel: None, use_threads: true, role: None },
+        }
+    }
+}
+
+impl Default for GuildCache {
+    fn default() -> Self {
+        Self {
+            last_populated: DateTime::from(UNIX_EPOCH),
+            cache: vec![],
+        }
+    }
+}
 
 pub struct BotEvents {
     pub pool: Pool<MySql>,
+    pub guild_cache: Arc<Mutex<GuildCache>>,
 }
 
 #[async_trait]
@@ -38,11 +96,12 @@ impl EventHandler for BotEvents {
                 exit(0x0100);
             }
         };
-        
+
         let thread_ctx = ctx.clone();
         let thread_db_pool = self.pool.clone();
+        let thread_cache = self.guild_cache.clone();
         std::thread::spawn(move || {
-            runner(thread_ctx, thread_db_pool);
+            runner(thread_ctx, thread_db_pool, thread_cache);
         });
 
         //{
@@ -85,10 +144,9 @@ impl EventHandler for BotEvents {
         match interaction {
             Interaction::Command(cmd) => {
                 if let Err(why) = match cmd.data.name.as_str() {
-                    "settings" => run(&self.pool, &ctx, cmd).await, 
+                    "settings" => run(&self.pool, &ctx, cmd, &self.guild_cache).await,
                     _ => unimplemented(&ctx, cmd).await,
-                }
-                {
+                } {
                     println!("cmd error: {why}")
                 }
             }
@@ -98,7 +156,7 @@ impl EventHandler for BotEvents {
 
     async fn guild_create(&self, _ctx: Context, guild: Guild, _is_new: Option<bool>) {
         println!("guild: {}", guild.name);
-        if let Err(why) = insert_new_guild(&guild, &self.pool).await {
+        if let Err(why) = insert_new_guild(&guild, &self.pool, &self.guild_cache).await {
             println!("Error inserting new guild: {why}");
         }
     }

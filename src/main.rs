@@ -1,4 +1,6 @@
-use event_manager::BotEvents;
+use std::sync::{Mutex, Arc};
+
+use event_manager::{BotEvents, GuildCache};
 use sqlx::{MySql, MySqlPool, Pool};
 
 use serenity::{client::ClientBuilder, prelude::*};
@@ -38,7 +40,7 @@ async fn main() {
         }
     };
 
-    let event_manager = BotEvents { pool: pool.clone() };
+    let event_manager = BotEvents { pool: pool.clone(), guild_cache: Arc::new(Mutex::new(GuildCache::default())) };
 
     let mut client =
         match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)

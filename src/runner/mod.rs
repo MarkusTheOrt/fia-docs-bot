@@ -1,3 +1,4 @@
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
 use chrono::DateTime;
@@ -6,22 +7,13 @@ use chrono::Utc;
 use serenity::all::ChannelId;
 use serenity::builder::CreateEmbed;
 use serenity::builder::CreateEmbedAuthor;
-use serenity::builder::CreateEmbedFooter;
 use serenity::builder::CreateMessage;
 use serenity::builder::CreateThread;
 use serenity::prelude::Context;
 use sqlx::{MySql, Pool};
 
+use crate::event_manager::{CachedGuild, GuildCache};
 use crate::model::series::RacingSeries;
-
-#[derive(Debug)]
-pub struct JoinRes {
-    id: u64,
-    channel: u64,
-    role: Option<u64>,
-    threads: bool,
-    //   thread: Option<u64>
-}
 
 #[derive(Debug, Clone)]
 pub struct JoinImage {
@@ -37,7 +29,21 @@ pub struct JoinImage {
     //   thread_id: u64,
 }
 
+pub struct AllGuild {
+    pub id: u64,
+    pub f1_channel: Option<u64>,
+    pub f1_threads: bool,
+    pub f1_role: Option<u64>,
+    pub f2_channel: Option<u64>,
+    pub f2_threads: bool,
+    pub f2_role: Option<u64>,
+    pub f3_channel: Option<u64>,
+    pub f3_threads: bool,
+    pub f3_role: Option<u64>,
+}
+
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct MinImg {
     url: String,
     page: u32,
@@ -67,9 +73,13 @@ impl From<ImageDoc> for Vec<CreateEmbed> {
             .timestamp(value.created)
             .author(CreateEmbedAuthor::new("FIA Document"));
 
-        return_array.push(main_embed);
+        if let Some(image) = value.images.first() {
+            return_array.push(main_embed.image(image.url.clone()));
+        } else {
+            return_array.push(main_embed);
+        }
 
-        for image in value.images.into_iter().take(4) {
+        for image in value.images.into_iter().skip(1).take(3) {
             return_array.push(CreateEmbed::new().url(value.url.clone()).image(image.url));
         }
         drop(value.url);
@@ -99,97 +109,147 @@ impl Default for ThreadCache {
 }
 
 #[tokio::main]
-pub async fn runner(ctx: Context, pool: Pool<MySql>) {
+pub async fn runner(ctx: Context, pool: Pool<MySql>, guild_cache: Arc<Mutex<GuildCache>>) {
     let mut thread_cache = ThreadCache::default();
     loop {
         populate_cache(&pool, &mut thread_cache).await;
+        populate_guild_cache(&pool, &guild_cache).await;
         std::thread::sleep(Duration::from_secs(5));
-        let f1_guild_data = match join_query(&pool, RacingSeries::F1).await {
-            Ok(data) => data,
-            Err(why) => {
-                eprintln!("Error reading guilds from database:\n{why}");
-                continue;
-            }
+        let guilds = {
+            let cache = guild_cache.lock().unwrap();
+            cache.cache.clone()
         };
-        let docs = match unposted_documents(&pool, RacingSeries::F1).await {
-            Ok(data) => join_to_doc(data),
-            Err(why) => {
-                eprintln!("Error reading unposted docs from db:\n{why}");
+        run_internal(&pool, RacingSeries::F1, &guilds, &ctx, &mut thread_cache).await;
+        run_internal(&pool, RacingSeries::F2, &guilds, &ctx, &mut thread_cache).await;
+        run_internal(&pool, RacingSeries::F3, &guilds, &ctx, &mut thread_cache).await;
+    }
+}
+
+async fn run_internal(
+    pool: &Pool<MySql>,
+    series: RacingSeries,
+    guild_cache: &Vec<CachedGuild>,
+    ctx: &Context,
+    thread_cache: &mut ThreadCache,
+) {
+    let docs = match unposted_documents(&pool, series).await {
+        Ok(data) => join_to_doc(data),
+        Err(why) => {
+            eprintln!("Error reading unposted docs from db:\n{why}");
+            return;
+        }
+    };
+
+    for doc in docs.into_iter() {
+        if let Err(why) = mark_doc_done(&pool, &doc).await {
+            println!("Error marking doc as done:\n{why}");
+            continue;
+        }
+        for guild in guild_cache.iter() {
+            let guild_data = match series {
+                RacingSeries::F1 => &guild.f1,
+                RacingSeries::F2 => &guild.f2,
+                RacingSeries::F3 => &guild.f3,
+            };
+            // skip not-set up guilds.
+            if guild_data.channel.is_none() {
                 continue;
             }
-        };
-
-        for doc in docs.into_iter() {
-            if let Err(why) = mark_doc_done(&pool, &doc).await {
-                println!("Error marking doc as done:\n{why}");
-                continue;
-            }
-            for guild in f1_guild_data.iter() {
-                if guild.threads {
-                    let msg = create_message(&doc, guild.role);
-                    if let Some(thread) = thread_cache
-                        .cache
-                        .iter()
-                        .find(|p| p.guild == guild.id && p.event == doc.event)
-                    {
-                        let id = ChannelId::new(thread.id);
-                        let embeds: Vec<CreateEmbed> = doc.clone().into();
-
-                        if let Err(why) = id.send_message(&ctx, msg).await {
-                            println!("Error sending msg in thread: {why}");
-                            continue;
-                        }
-                    } else {
-                        let audit_log_reason = format!(
-                            "Thread for event `{} {}` not found.",
-                            doc.created.year(),
-                            doc.event_name
-                        );
-                        let channel_id = ChannelId::new(guild.channel);
-                        let create_thread = CreateThread::new(format!(
-                            "{} {} {}",
-                            doc.created.year(),
-                            RacingSeries::F1,
-                            doc.event_name
-                        ))
-                        .audit_log_reason(&audit_log_reason)
-                        .kind(serenity::all::ChannelType::PublicThread)
-                        .auto_archive_duration(serenity::all::AutoArchiveDuration::ThreeDays);
-
-                        let thread = match channel_id.create_thread(&ctx, create_thread).await {
-                            Err(why) => {
-                                println!("Error creating thread: {why}");
-                                continue;
-                            }
-                            Ok(data) => data,
-                        };
-                        let min_thread = MinThread {
-                            id: thread.id.get(),
-                            guild: guild.id,
-                            event: doc.event,
-                            year: doc.created.year(),
-                        };
-                        if let Err(why) = insert_thread(&pool, &min_thread).await {
-                            println!("Error creating thread: {why}");
-                        }
-                        thread_cache.cache.push(min_thread);
-                        if let Err(why) = thread.send_message(&ctx, msg).await {
-                            println!("Couldn't send into new thread: {why}");
-                            continue;
-                        }
+            if guild_data.use_threads {
+                let msg = create_message(&doc, guild_data.role);
+                if let Some(thread) = thread_cache
+                    .cache
+                    .iter()
+                    .find(|p| p.guild == guild.id && p.event == doc.event)
+                {
+                    let id = ChannelId::new(thread.id);
+                    if let Err(why) = id.send_message(&ctx, msg).await {
+                        println!("Error sending msg in thread: {why}");
+                        continue;
                     }
                 } else {
-                    let id = ChannelId::new(guild.id);
-                    if let Err(why) = id
-                        .send_message(&ctx, create_message(&doc, guild.role))
-                        .await
-                    {
-                        println!("Error sending channel embed: {why}");
+                    let audit_log_reason = format!(
+                        "Thread for event `{} {}` not found.",
+                        doc.created.year(),
+                        doc.event_name
+                    );
+                    let channel_id = ChannelId::new(guild_data.channel.unwrap());
+                    let create_thread = CreateThread::new(format!(
+                        "{} {} {}",
+                        doc.created.year(),
+                        series,
+                        doc.event_name
+                    ))
+                    .audit_log_reason(&audit_log_reason)
+                    .kind(serenity::all::ChannelType::PublicThread)
+                    .auto_archive_duration(serenity::all::AutoArchiveDuration::ThreeDays);
+
+                    let thread = match channel_id.create_thread(&ctx, create_thread).await {
+                        Err(why) => {
+                            println!("Error creating thread: {why}");
+                            continue;
+                        }
+                        Ok(data) => data,
+                    };
+                    let min_thread = MinThread {
+                        id: thread.id.get(),
+                        guild: guild.id,
+                        event: doc.event,
+                        year: doc.created.year(),
+                    };
+                    if let Err(why) = insert_thread(&pool, &min_thread).await {
+                        println!("Error creating thread: {why}");
                     }
+                    thread_cache.cache.push(min_thread);
+                    if let Err(why) = thread.send_message(&ctx, msg).await {
+                        println!("Couldn't send into new thread: {why}");
+                        continue;
+                    }
+                }
+            } else {
+                let id = ChannelId::new(guild_data.channel.unwrap());
+                if let Err(why) = id
+                    .send_message(&ctx, create_message(&doc, guild_data.role))
+                    .await
+                {
+                    println!("Error sending channel embed: {why}");
                 }
             }
         }
     }
+}
+
+async fn populate_guild_cache(pool: &Pool<MySql>, guild_cache: &Arc<Mutex<GuildCache>>) {
+    {
+        let cache = guild_cache.lock().unwrap();
+        if (Utc::now() - cache.last_populated).num_days() < 1 {
+            return;
+        }
+    }
+    let data = match sqlx::query_as_unchecked!(
+        AllGuild,
+        r#"
+    SELECT id, f1_channel, f1_role, f1_threads,
+    f2_channel, f2_role, f2_threads,
+    f3_channel, f3_role, f3_threads FROM guilds
+    "#
+    )
+    .fetch_all(pool)
+    .await
+    {
+        Ok(data) => data,
+        Err(why) => {
+            println!("Error fetching guilds: {why}");
+            return;
+        }
+    };
+    let mut cache_mut = guild_cache.lock().unwrap();
+    cache_mut.cache.clear();
+    for guild in data.into_iter() {
+        cache_mut.cache.push(guild.into());
+    }
+    println!("guilds cache populated!");
+    cache_mut.last_populated = Utc::now();
 }
 
 async fn insert_thread(pool: &Pool<MySql>, thread: &MinThread) -> Result<(), sqlx::Error> {
@@ -305,60 +365,4 @@ async fn unposted_documents(
     )
     .fetch_all(pool)
     .await;
-}
-
-async fn join_query(
-    pool: &Pool<MySql>,
-    racing_series: RacingSeries,
-) -> Result<Vec<JoinRes>, sqlx::Error> {
-    match racing_series {
-        RacingSeries::F1 => {
-            return sqlx::query_as_unchecked!(
-                JoinRes,
-                r#"
-    SELECT
-    id,
-    f1_channel as `channel!`,
-    f1_threads as threads,
-    f1_role as role
-    FROM guilds
-    WHERE
-    f1_channel IS NOT NULL"#
-            )
-            .fetch_all(pool)
-            .await;
-        }
-        RacingSeries::F2 => {
-            return sqlx::query_as_unchecked!(
-                JoinRes,
-                r#"
-    SELECT
-    id,
-    f2_channel as `channel!`,
-    f2_threads as threads,
-    f2_role as role
-    FROM guilds
-    WHERE
-    f2_channel IS NOT NULL"#
-            )
-            .fetch_all(pool)
-            .await;
-        }
-        RacingSeries::F3 => {
-            return sqlx::query_as_unchecked!(
-                JoinRes,
-                r#"
-    SELECT
-    id,
-    f3_channel as `channel!`,
-    f3_threads as threads,
-    f3_role as role
-    FROM guilds
-    WHERE
-    f3_channel IS NOT NULL"#
-            )
-            .fetch_all(pool)
-            .await;
-        }
-    }
 }
