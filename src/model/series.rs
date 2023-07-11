@@ -15,9 +15,9 @@ pub enum RacingSeries {
 impl fmt::Display for RacingSeries {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::F1 => return write!(f, "f1"),
-            Self::F2 => return write!(f, "f2"),
-            Self::F3 => return write!(f, "f3")
+            Self::F1 => return write!(f, "F1"),
+            Self::F2 => return write!(f, "F2"),
+            Self::F3 => return write!(f, "F3")
         }
     }
 }
