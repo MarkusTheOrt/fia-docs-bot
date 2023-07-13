@@ -101,9 +101,9 @@ impl EventHandler for BotEvents {
         let thread_ctx = ctx.clone();
         let thread_db_pool = self.pool.clone();
         let thread_cache = self.guild_cache.clone();
-        //std::thread::spawn(move || {
-        //    runner(thread_ctx, thread_db_pool, thread_cache);
-        //});
+        std::thread::spawn(move || {
+            runner(thread_ctx, thread_db_pool, thread_cache);
+        });
 
         {
             let mut fut = vec![];
