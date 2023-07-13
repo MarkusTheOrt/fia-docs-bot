@@ -129,8 +129,8 @@ impl EventHandler for BotEvents {
         }
 
         ctx.set_activity(Some(serenity::gateway::ActivityData {
-            name: "MAINTENANCE MODE!".to_owned(),
-            kind: ActivityType::Playing,
+            name: "FIA Documents".to_owned(),
+            kind: ActivityType::Listening,
             url: None,
         }));
 
