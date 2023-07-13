@@ -2,6 +2,7 @@ use std::{process::exit, sync::Arc, time::UNIX_EPOCH};
 use std::sync::Mutex;
 
 use chrono::{DateTime, Utc};
+use serenity::futures::future::join_all;
 use serenity::{
     all::{
         ActivityType, Guild, GuildId, Interaction, PartialGuild, ResumedEvent, UnavailableGuild,
@@ -100,25 +101,25 @@ impl EventHandler for BotEvents {
         let thread_ctx = ctx.clone();
         let thread_db_pool = self.pool.clone();
         let thread_cache = self.guild_cache.clone();
-        std::thread::spawn(move || {
-            runner(thread_ctx, thread_db_pool, thread_cache);
-        });
+        //std::thread::spawn(move || {
+        //    runner(thread_ctx, thread_db_pool, thread_cache);
+        //});
 
-        //{
-        //    let mut fut = vec![];
-        //
-        //    if let Ok(commands) = ctx.http().get_global_commands().await {
-        //        for command in commands {
-        //            fut.push(ctx.http.delete_global_command(command.id));
-        //        }
-        //    }
-        //
-        //    for fut in join_all(fut).await {
-        //        if let Err(why) = fut {
-        //            println!("error removing command: {why}");
-        //        }
-        //    }
-        //}
+        {
+            let mut fut = vec![];
+        
+            if let Ok(commands) = ctx.http().get_global_commands().await {
+                for command in commands {
+                    fut.push(ctx.http.delete_global_command(command.id));
+                }
+            }
+        
+            for fut in join_all(fut).await {
+                if let Err(why) = fut {
+                    println!("error removing command: {why}");
+                }
+            }
+        }
 
         {
             if let Err(why) = ctx.http.create_global_command(&set::register()).await {
@@ -128,8 +129,8 @@ impl EventHandler for BotEvents {
         }
 
         ctx.set_activity(Some(serenity::gateway::ActivityData {
-            name: "fia.com/documents".to_owned(),
-            kind: ActivityType::Watching,
+            name: "MAINTENANCE MODE!".to_owned(),
+            kind: ActivityType::Playing,
             url: None,
         }));
 
