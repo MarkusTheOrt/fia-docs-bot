@@ -5,7 +5,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Utc;
-use serenity::all::ChannelId;
+use serenity::all::{ChannelId, AutoArchiveDuration};
+use serenity::all::ChannelType::PublicThread;
 use serenity::builder::CreateEmbed;
 use serenity::builder::CreateEmbedAuthor;
 use serenity::builder::CreateMessage;
@@ -120,10 +121,83 @@ pub async fn runner(ctx: Context, pool: Pool<MySql>, guild_cache: Arc<Mutex<Guil
             let cache = guild_cache.lock().unwrap();
             cache.cache.clone()
         };
+
+        create_threads(&pool, &guilds, &ctx, &mut thread_cache).await;
         run_internal(&pool, RacingSeries::F1, &guilds, &ctx, &mut thread_cache).await;
         run_internal(&pool, RacingSeries::F2, &guilds, &ctx, &mut thread_cache).await;
         run_internal(&pool, RacingSeries::F3, &guilds, &ctx, &mut thread_cache).await;
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct NewEvent {
+    pub id: u64,
+    pub name: String,
+    pub year: i32,
+    pub series: RacingSeries,
+}
+
+async fn create_threads(
+    pool: &Pool<MySql>,
+    guilds: &Vec<CachedGuild>,
+    ctx: &Context,
+    thread_cache: &mut ThreadCache,
+) {
+    let events = match new_events(pool).await {
+        Ok(data) => data,
+        Err(_) => return,
+    };
+    for event in events.into_iter() {
+        for guild in guilds {
+            let guild_data = match event.series {
+                RacingSeries::F1 => &guild.f1,
+                RacingSeries::F2 => &guild.f2,
+                RacingSeries::F3 => &guild.f3,
+            };
+
+            if guild_data.channel.is_none() {
+                continue;
+            }
+
+            if !guild_data.use_threads {
+                continue;
+            }
+
+            let channel = ChannelId::new(guild_data.channel.unwrap());
+            let thread = match channel
+                .create_thread(
+                    ctx,
+                    CreateThread::new(format!("{} {} {}", event.year, event.series, event.name))
+                        .audit_log_reason("New event thread")
+                        .kind(PublicThread)
+                    .auto_archive_duration(AutoArchiveDuration::ThreeDays)
+                )
+                .await
+            {
+                Ok(data) => data,
+                Err(why) => {
+                    println!("Error creating thread for guild {}: {why}", guild.id);
+                    continue;
+                }
+            };
+            let thread = MinThread { id: thread.id.get(), guild: guild.id, event: event.id, year: event.year };
+            if let Err(why) = insert_thread(pool, &thread).await {
+                println!("Error adding thread to database: {why}");
+            }
+            thread_cache.cache.push(thread);
+        }
+    }
+}
+
+async fn new_events(pool: &Pool<MySql>) -> Result<Vec<NewEvent>, sqlx::Error> {
+    return sqlx::query_as_unchecked!(
+        NewEvent,
+        r#"
+    SELECT `id` as `id!`, name, year, series FROM events WHERE new = 1
+    "#
+    )
+    .fetch_all(pool)
+    .await;
 }
 
 async fn run_internal(
@@ -169,44 +243,7 @@ async fn run_internal(
                         continue;
                     }
                 } else {
-                    let audit_log_reason = format!(
-                        "Thread for event `{} {}` not found.",
-                        doc.created.year(),
-                        doc.event_name
-                    );
-                    let channel_id = ChannelId::new(guild_data.channel.unwrap());
-                    let create_thread = CreateThread::new(format!(
-                        "{} {} {}",
-                        doc.created.year(),
-                        series,
-                        doc.event_name
-                    ))
-                    .audit_log_reason(&audit_log_reason)
-                    .kind(serenity::all::ChannelType::PublicThread)
-                    .auto_archive_duration(serenity::all::AutoArchiveDuration::ThreeDays);
-
-                    let thread = match channel_id.create_thread(&ctx, create_thread).await {
-                        Err(why) => {
-                            println!("Error creating thread: [{}] {why}", guild.id);
-                            continue;
-                        }
-                        Ok(data) => data,
-                    };
-                    let min_thread = MinThread {
-                        id: thread.id.get(),
-                        guild: guild.id,
-                        event: doc.event,
-                        year: doc.created.year(),
-                    };
-                    if let Err(why) = insert_thread(&pool, &min_thread).await {
-                        println!("Error creating db thread: {why}");
-                        continue;
-                    }
-                    thread_cache.cache.push(min_thread);
-                    if let Err(why) = thread.send_message(&ctx, msg).await {
-                        println!("Couldn't send into new thread: {why}");
-                        continue;
-                    }
+                    println!("thread for guild {} not found!", guild.id);
                 }
             } else {
                 let id = ChannelId::new(guild_data.channel.unwrap());
