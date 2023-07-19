@@ -30,6 +30,12 @@ pub struct SeriesSettings {
     pub role: Option<u64>,
 }
 
+impl Default for SeriesSettings {
+    fn default() -> Self {
+        Self { channel: None, use_threads: true, role: None }
+    }
+}
+
 #[derive(Clone)]
 pub struct CachedGuild {
     pub id: u64,
@@ -156,7 +162,6 @@ impl EventHandler for BotEvents {
     }
 
     async fn guild_create(&self, _ctx: Context, guild: Guild, _is_new: Option<bool>) {
-        println!("guild: {}", guild.name);
         if let Err(why) = insert_new_guild(&guild, &self.pool, &self.guild_cache).await {
             println!("Error inserting new guild: {why}");
         }

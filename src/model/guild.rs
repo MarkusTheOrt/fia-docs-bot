@@ -1,11 +1,10 @@
 use std::sync::{Arc, Mutex};
-
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serenity::model::prelude::{Guild, PartialGuild};
 use sqlx::{MySql, Pool};
 
-use crate::event_manager::{CachedGuild, GuildCache};
+use crate::event_manager::{CachedGuild, GuildCache, SeriesSettings};
 
 #[derive(Serialize, Deserialize)]
 pub struct DbGuild {
@@ -31,7 +30,17 @@ pub async fn insert_new_guild(
 
     {
         let mut cache = guild_cache.lock().unwrap();
-        cache.cache.push(CachedGuild::new(new_guild.id));
+        match cache.cache.iter_mut().find(|p| p.id == guild.id.get()) {
+            Some(_) => {}
+            None => {
+                cache.cache.push(CachedGuild {
+                    id: guild.id.get(),
+                    f1: SeriesSettings::default(),
+                    f2: SeriesSettings::default(),
+                    f3: SeriesSettings::default(),
+                });
+            }
+        }
     }
 
     return sqlx::query!(

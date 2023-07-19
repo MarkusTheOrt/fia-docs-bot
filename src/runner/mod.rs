@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, UNIX_EPOCH};
 
@@ -164,7 +165,7 @@ async fn run_internal(
                 {
                     let id = ChannelId::new(thread.id);
                     if let Err(why) = id.send_message(&ctx, msg).await {
-                        println!("Error sending msg in thread: {why}");
+                        println!("Error sending msg in thread: [{}] {why}", guild.id);
                         continue;
                     }
                 } else {
@@ -186,7 +187,7 @@ async fn run_internal(
 
                     let thread = match channel_id.create_thread(&ctx, create_thread).await {
                         Err(why) => {
-                            println!("Error creating thread: {why}");
+                            println!("Error creating thread: [{}] {why}", guild.id);
                             continue;
                         }
                         Ok(data) => data,
@@ -198,7 +199,8 @@ async fn run_internal(
                         year: doc.created.year(),
                     };
                     if let Err(why) = insert_thread(&pool, &min_thread).await {
-                        println!("Error creating thread: {why}");
+                        println!("Error creating db thread: {why}");
+                        continue;
                     }
                     thread_cache.cache.push(min_thread);
                     if let Err(why) = thread.send_message(&ctx, msg).await {
@@ -265,10 +267,13 @@ async fn insert_thread(pool: &Pool<MySql>, thread: &MinThread) -> Result<(), sql
     return Ok(());
 }
 
-async fn mark_doc_done(pool: &Pool<MySql>, doc: &ImageDoc) -> Result<(), sqlx::Error> {
-    sqlx::query!("UPDATE documents SET notified = 1 WHERE id = ?", doc.id)
+async fn mark_doc_done(pool: &Pool<MySql>, doc: &ImageDoc) -> Result<(), Box<dyn Error>> {
+    let t = sqlx::query!("UPDATE documents SET notified = 1 WHERE id = ?", doc.id)
         .execute(pool)
         .await?;
+    if t.rows_affected() == 0 {
+        return Err(String::from("Rows affected = 0").into());
+    }
     return Ok(());
 }
 
@@ -302,7 +307,7 @@ async fn populate_cache(pool: &Pool<MySql>, cache: &mut ThreadCache) {
             return;
         }
     };
-
+    println!("poopulated thread cache");
     cache.last_populated = Utc::now();
     cache.cache = data;
 }

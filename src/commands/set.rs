@@ -1,4 +1,4 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Arc, Mutex};
 
 use serenity::{
     all::{
@@ -15,7 +15,7 @@ use serenity::{
 };
 use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
 
-use crate::{model::series::RacingSeries, event_manager::GuildCache};
+use crate::{event_manager::GuildCache, model::series::RacingSeries};
 
 pub fn register() -> CreateCommand {
     return CreateCommand::new("settings")
@@ -30,15 +30,15 @@ pub fn register() -> CreateCommand {
 
 fn create_option(series: RacingSeries) -> CreateCommandOption {
     return CreateCommandOption::new(SubCommand, series, "Settings for the series")
-        .add_sub_option(create_channel_option())
         .add_sub_option(create_thread_option())
+        .add_sub_option(create_channel_option())
         .add_sub_option(create_role_option());
 }
 
 fn create_channel_option() -> CreateCommandOption {
     return CreateCommandOption::new(Channel, "channel", "Channel to post documents in")
         .channel_types(vec![ChannelType::Text])
-        .required(true);
+        .required(false);
 }
 
 fn create_thread_option() -> CreateCommandOption {
@@ -69,7 +69,7 @@ pub async fn run(
     pool: &Pool<MySql>,
     ctx: &Context,
     cmd: CommandInteraction,
-    cache: &Arc<Mutex<GuildCache>>
+    cache: &Arc<Mutex<GuildCache>>,
 ) -> Result<(), serenity::Error> {
     if cmd.guild_id.is_none() {
         let builder = CreateInteractionResponse::Message(
@@ -135,7 +135,7 @@ async fn series_command<'a>(
     pool: &Pool<MySql>,
     cmd: &CommandInteraction,
     options: Vec<ResolvedOption<'_>>,
-    cache: &Arc<Mutex<GuildCache>>
+    cache: &Arc<Mutex<GuildCache>>,
 ) -> Result<String, String> {
     let options = resolve_options(options);
     if options.is_none() {
@@ -147,7 +147,12 @@ async fn series_command<'a>(
         Some(role) => Some(role.id.get()),
         None => None,
     };
-
+    
+    let channel_id = if let Some(channel) = channel{
+        Some(channel.id.get())
+    } else {
+        None
+    };
     // Write the results into our cache so we don't have to query the database every 5 seconds..u
     {
         let mut cache = cache.lock().unwrap();
@@ -155,10 +160,14 @@ async fn series_command<'a>(
             let series = match series {
                 RacingSeries::F1 => &mut guild.f1,
                 RacingSeries::F2 => &mut guild.f2,
-                RacingSeries::F3 => &mut guild.f3
+                RacingSeries::F3 => &mut guild.f3,
             };
             series.role = role_id.clone();
-            series.channel = Some(channel.id.get());
+            series.channel = if let Some(channel) = channel {
+                Some(channel.id.get())
+            } else {
+                None
+            };
             series.use_threads = threads;
         }
     }
@@ -166,7 +175,7 @@ async fn series_command<'a>(
     match series_query(
         pool,
         series,
-        channel.id.get(),
+        channel_id,
         threads,
         role_id,
         guild.get(),
@@ -174,24 +183,26 @@ async fn series_command<'a>(
     .await
     {
         Ok(_) => {
-            if role_id.is_some() {
+            if role_id.is_some() && channel.is_some() {
                 return Ok(format!(
                     r#"Updated settings for {series}
                 notify_role <@&{}>
                 channel <#{}>
                 use threads: `{}`"#,
                     role_id.unwrap(),
-                    channel.id.get(),
+                    channel.unwrap().id.get(),
                     threads
                 ));
-            } else {
+            } else if channel.is_some() {
                 return Ok(format!(
                     r#"Updated settings for {series}
                        channel <#{}>
                        use threads: `{}`"#,
-                    channel.id.get(),
+                    channel.unwrap().id.get(),
                     threads
                 ));
+            } else {
+                return Ok(format!("cleared channel, won't be notified anymore."));
             }
         }
         Err(why) => {
@@ -203,7 +214,7 @@ async fn series_command<'a>(
 async fn series_query(
     pool: &Pool<MySql>,
     series: RacingSeries,
-    channel: u64,
+    channel: Option<u64>,
     threads: bool,
     role: Option<u64>,
     guild: u64,
@@ -259,12 +270,22 @@ async fn series_query(
 
 fn resolve_options<'a>(
     options: Vec<ResolvedOption<'a>>,
-) -> Option<(&'a PartialChannel, bool, Option<&'a Role>)> {
+) -> Option<(Option<&'a PartialChannel>, bool, Option<&'a Role>)> {
     let mut it = options.into_iter();
-    let channel = it.next().take();
     let threads = it.next().take();
+    let channel = it.next().take();
     let role = it.next().take();
-    if let (Some(channel), Some(threads), role) = (channel, threads, role) {
+    if let (channel, Some(threads), role) = (channel, threads, role) {
+        let channel = match channel {
+            None => None,
+            Some(data) => {
+                if let ResolvedValue::Channel(channel) = data.value {
+                    Some(channel)
+                } else {
+                    None
+                }
+            }
+        };
         let role = match role {
             None => None,
             Some(data) => {
@@ -275,9 +296,7 @@ fn resolve_options<'a>(
                 }
             }
         };
-        if let (ResolvedValue::Channel(channel), ResolvedValue::Boolean(threads)) =
-            (channel.value, threads.value)
-        {
+        if let ResolvedValue::Boolean(threads) = threads.value {
             return Some((channel, threads, role));
         }
     }
