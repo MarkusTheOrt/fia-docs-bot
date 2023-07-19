@@ -445,7 +445,7 @@ async fn insert_event(
         created: Utc::now(),
     };
     let series: String = db_event.series.into();
-    let res: MySqlQueryResult = sqlx::query_unchecked!("INSERT INTO events (series, year, name, created, current) VALUES (?, ?, ?, ?, 0)",
+    let res: MySqlQueryResult = sqlx::query_unchecked!("INSERT INTO events (series, year, name, created, current, new) VALUES (?, ?, ?, ?, 0, 1)",
     series,
     db_event.year,
     db_event.name,
