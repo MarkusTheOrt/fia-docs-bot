@@ -148,6 +148,10 @@ async fn create_threads(
         Err(_) => return,
     };
     for event in events.into_iter() {
+        if let Err(why) = sqlx::query!("UPDATE events SET new = 0 WHERE id = ?", event.id).execute(pool).await {
+            println!("Error marking event as done: {why}");
+            continue;
+        }
         for guild in guilds {
             let guild_data = match event.series {
                 RacingSeries::F1 => &guild.f1,
