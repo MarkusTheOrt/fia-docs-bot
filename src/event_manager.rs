@@ -1,5 +1,6 @@
-use std::{process::exit, sync::Arc, time::UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::{process::exit, sync::Arc, time::UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
 use serenity::futures::future::join_all;
@@ -32,7 +33,11 @@ pub struct SeriesSettings {
 
 impl Default for SeriesSettings {
     fn default() -> Self {
-        Self { channel: None, use_threads: true, role: None }
+        Self {
+            channel: None,
+            use_threads: true,
+            role: None,
+        }
     }
 }
 
@@ -48,9 +53,21 @@ impl From<AllGuild> for CachedGuild {
     fn from(value: AllGuild) -> Self {
         return Self {
             id: value.id,
-            f1: SeriesSettings { channel: value.f1_channel, use_threads: value.f1_threads, role: value.f1_role },
-            f2: SeriesSettings { channel: value.f2_channel, use_threads: value.f2_threads, role: value.f2_role },
-            f3: SeriesSettings { channel: value.f3_channel, use_threads: value.f3_threads, role: value.f3_role }
+            f1: SeriesSettings {
+                channel: value.f1_channel,
+                use_threads: value.f1_threads,
+                role: value.f1_role,
+            },
+            f2: SeriesSettings {
+                channel: value.f2_channel,
+                use_threads: value.f2_threads,
+                role: value.f2_role,
+            },
+            f3: SeriesSettings {
+                channel: value.f3_channel,
+                use_threads: value.f3_threads,
+                role: value.f3_role,
+            },
         };
     }
 }
@@ -64,10 +81,22 @@ impl CachedGuild {
     pub fn new(id: u64) -> Self {
         return Self {
             id,
-            f1: SeriesSettings { channel: None, use_threads: true, role: None },
-            f2: SeriesSettings { channel: None, use_threads: true, role: None },
-            f3: SeriesSettings { channel: None, use_threads: true, role: None },
-        }
+            f1: SeriesSettings {
+                channel: None,
+                use_threads: true,
+                role: None,
+            },
+            f2: SeriesSettings {
+                channel: None,
+                use_threads: true,
+                role: None,
+            },
+            f3: SeriesSettings {
+                channel: None,
+                use_threads: true,
+                role: None,
+            },
+        };
     }
 }
 
@@ -83,6 +112,7 @@ impl Default for GuildCache {
 pub struct BotEvents {
     pub pool: Pool<MySql>,
     pub guild_cache: Arc<Mutex<GuildCache>>,
+    pub thread_lock: AtomicBool,
 }
 
 #[async_trait]
@@ -104,22 +134,25 @@ impl EventHandler for BotEvents {
             }
         };
 
-        let thread_ctx = ctx.clone();
-        let thread_db_pool = self.pool.clone();
-        let thread_cache = self.guild_cache.clone();
-        std::thread::spawn(move || {
-            runner(thread_ctx, thread_db_pool, thread_cache);
-        });
+        if !self.thread_lock.load(Ordering::Relaxed) {
+            self.thread_lock.swap(true, Ordering::Relaxed);
+            let thread_ctx = ctx.clone();
+            let thread_db_pool = self.pool.clone();
+            let thread_cache = self.guild_cache.clone();
+            std::thread::spawn(move || {
+                runner(thread_ctx, thread_db_pool, thread_cache);
+            });
+        }
 
         {
             let mut fut = vec![];
-        
+
             if let Ok(commands) = ctx.http().get_global_commands().await {
                 for command in commands {
                     fut.push(ctx.http.delete_global_command(command.id));
                 }
             }
-        
+
             for fut in join_all(fut).await {
                 if let Err(why) = fut {
                     println!("error removing command: {why}");

@@ -1,4 +1,4 @@
-use std::sync::{Mutex, Arc};
+use std::sync::{Mutex, Arc, atomic::AtomicBool};
 
 use event_manager::{BotEvents, GuildCache};
 use sqlx::{MySql, MySqlPool, Pool};
@@ -40,7 +40,7 @@ async fn main() {
         }
     };
 
-    let event_manager = BotEvents { pool: pool.clone(), guild_cache: Arc::new(Mutex::new(GuildCache::default())) };
+    let event_manager = BotEvents { pool: pool.clone(), guild_cache: Arc::new(Mutex::new(GuildCache::default())), thread_lock: AtomicBool::new(false) };
 
     let mut client =
         match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
