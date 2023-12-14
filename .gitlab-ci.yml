@@ -1,0 +1,26 @@
+
+stages:
+  - build
+  - test
+  - security
+
+build-job:
+  stage: build
+  script:
+    - cargo build --release
+
+rustfmt:
+    stage: test
+    script:
+        - cargo fmt --all --check
+
+lint-test-job:
+  stage: test
+  script:
+    - cargo clippy
+
+check-advisories:
+  stage: security
+  allow_failure: true
+  script:
+    - cargo deny check advisories
