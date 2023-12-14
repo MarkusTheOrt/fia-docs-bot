@@ -13,7 +13,7 @@ use serenity::{
     prelude::*,
 };
 
-use sqlx::{MySql, Pool};
+use sqlx::MySqlPool;
 
 use crate::runner::AllGuild;
 use crate::{
@@ -88,7 +88,7 @@ impl Default for GuildCache {
 }
 
 pub struct BotEvents {
-    pub pool: Pool<MySql>,
+    pub db: &'static MySqlPool,
     pub guild_cache: Arc<Mutex<GuildCache>>,
     pub thread_lock: AtomicBool,
 }
@@ -119,7 +119,7 @@ impl EventHandler for BotEvents {
         if !self.thread_lock.load(Ordering::Relaxed) {
             self.thread_lock.swap(true, Ordering::Relaxed);
             let thread_ctx = ctx.clone();
-            let thread_db_pool = self.pool.clone();
+            let thread_db_pool = self.db;
             let thread_cache = self.guild_cache.clone();
             std::thread::spawn(move || {
                 runner(thread_ctx, thread_db_pool, thread_cache);
@@ -173,7 +173,7 @@ impl EventHandler for BotEvents {
         if let Interaction::Command(cmd) = interaction {
             if let Err(why) = match cmd.data.name.as_str() {
                 "settings" => {
-                    run(&self.pool, &ctx, cmd, &self.guild_cache).await
+                    run(self.db, &ctx, cmd, &self.guild_cache).await
                 },
                 _ => unimplemented(&ctx, cmd).await,
             } {
@@ -189,7 +189,7 @@ impl EventHandler for BotEvents {
         _is_new: Option<bool>,
     ) {
         if let Err(why) =
-            insert_new_guild(&guild, &self.pool, &self.guild_cache).await
+            insert_new_guild(&guild, self.db, &self.guild_cache).await
         {
             println!("Error inserting new guild: {why}");
         }
@@ -201,7 +201,7 @@ impl EventHandler for BotEvents {
         _old: Option<Guild>,
         new_incomplete: PartialGuild,
     ) {
-        if let Err(why) = update_guild_name(&new_incomplete, &self.pool).await {
+        if let Err(why) = update_guild_name(&new_incomplete, self.db).await {
             println!("Error updating guild: {why}");
         }
     }
@@ -222,7 +222,7 @@ impl EventHandler for BotEvents {
         };
         if let Err(why) =
             sqlx::query!("DELETE FROM guilds WHERE id = ?", guild.id.get())
-                .execute(&self.pool)
+                .execute(self.db)
                 .await
         {
             println!("Error removing guild: {why}");

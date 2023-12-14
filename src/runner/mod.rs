@@ -116,25 +116,25 @@ impl Default for ThreadCache {
 #[tokio::main]
 pub async fn runner(
     ctx: Context,
-    pool: Pool<MySql>,
+    pool: &Pool<MySql>,
     guild_cache: Arc<Mutex<GuildCache>>,
 ) {
     let mut thread_cache = ThreadCache::default();
     loop {
-        populate_cache(&pool, &mut thread_cache).await;
-        populate_guild_cache(&pool, &guild_cache).await;
+        populate_cache(pool, &mut thread_cache).await;
+        populate_guild_cache(pool, &guild_cache).await;
         std::thread::sleep(Duration::from_secs(5));
         let guilds = {
             let cache = guild_cache.lock().unwrap();
             cache.cache.clone()
         };
 
-        create_threads(&pool, &guilds, &ctx, &mut thread_cache).await;
-        run_internal(&pool, RacingSeries::F1, &guilds, &ctx, &mut thread_cache)
+        create_threads(pool, &guilds, &ctx, &mut thread_cache).await;
+        run_internal(pool, RacingSeries::F1, &guilds, &ctx, &mut thread_cache)
             .await;
-        run_internal(&pool, RacingSeries::F2, &guilds, &ctx, &mut thread_cache)
+        run_internal(pool, RacingSeries::F2, &guilds, &ctx, &mut thread_cache)
             .await;
-        run_internal(&pool, RacingSeries::F3, &guilds, &ctx, &mut thread_cache)
+        run_internal(pool, RacingSeries::F3, &guilds, &ctx, &mut thread_cache)
             .await;
     }
 }

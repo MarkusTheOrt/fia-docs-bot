@@ -32,16 +32,16 @@ async fn main() {
             },
         };
 
-    let pool = match create_sqlx_client(&sqlx_connection).await {
+    let pool = Box::leak(Box::new(match create_sqlx_client(&sqlx_connection).await {
         Ok(pool) => pool,
         Err(why) => {
             println!("Error connecting to database: {why}");
             return;
         },
-    };
+    }));
 
     let event_manager = BotEvents {
-        pool: pool.clone(),
+        db: pool,
         guild_cache: Arc::new(Mutex::new(GuildCache::default())),
         thread_lock: AtomicBool::new(false),
     };
