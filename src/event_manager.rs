@@ -6,7 +6,8 @@ use chrono::{DateTime, Utc};
 use serenity::futures::future::join_all;
 use serenity::{
     all::{
-        ActivityType, Guild, GuildId, Interaction, PartialGuild, ResumedEvent, UnavailableGuild,
+        ActivityType, Guild, GuildId, Interaction, PartialGuild, ResumedEvent,
+        UnavailableGuild,
     },
     async_trait,
     prelude::*,
@@ -117,13 +118,17 @@ pub struct BotEvents {
 
 #[async_trait]
 impl EventHandler for BotEvents {
-    async fn cache_ready(&self, ctx: Context, _guilds: Vec<GuildId>) {
+    async fn cache_ready(
+        &self,
+        ctx: Context,
+        _guilds: Vec<GuildId>,
+    ) {
         let res = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
             Err(why) => {
                 println!("error receiving Application Info: {why}");
                 exit(0x0100);
-            }
+            },
         };
 
         let user = match ctx.http().get_current_user().await {
@@ -131,7 +136,7 @@ impl EventHandler for BotEvents {
             Err(why) => {
                 println!("error reciving app user: {why}");
                 exit(0x0100);
-            }
+            },
         };
 
         if !self.thread_lock.load(Ordering::Relaxed) {
@@ -161,7 +166,9 @@ impl EventHandler for BotEvents {
         }
 
         {
-            if let Err(why) = ctx.http.create_global_command(&set::register()).await {
+            if let Err(why) =
+                ctx.http.create_global_command(&set::register()).await
+            {
                 println!("Error registering command: {why}");
                 exit(0x0100);
             }
@@ -180,33 +187,56 @@ impl EventHandler for BotEvents {
         );
     }
 
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+    async fn interaction_create(
+        &self,
+        ctx: Context,
+        interaction: Interaction,
+    ) {
         match interaction {
             Interaction::Command(cmd) => {
                 if let Err(why) = match cmd.data.name.as_str() {
-                    "settings" => run(&self.pool, &ctx, cmd, &self.guild_cache).await,
+                    "settings" => {
+                        run(&self.pool, &ctx, cmd, &self.guild_cache).await
+                    },
                     _ => unimplemented(&ctx, cmd).await,
                 } {
                     println!("cmd error: {why}")
                 }
-            }
-            _ => {}
+            },
+            _ => {},
         }
     }
 
-    async fn guild_create(&self, _ctx: Context, guild: Guild, _is_new: Option<bool>) {
-        if let Err(why) = insert_new_guild(&guild, &self.pool, &self.guild_cache).await {
+    async fn guild_create(
+        &self,
+        _ctx: Context,
+        guild: Guild,
+        _is_new: Option<bool>,
+    ) {
+        if let Err(why) =
+            insert_new_guild(&guild, &self.pool, &self.guild_cache).await
+        {
             println!("Error inserting new guild: {why}");
         }
     }
 
-    async fn guild_update(&self, _ctx: Context, _old: Option<Guild>, new_incomplete: PartialGuild) {
+    async fn guild_update(
+        &self,
+        _ctx: Context,
+        _old: Option<Guild>,
+        new_incomplete: PartialGuild,
+    ) {
         if let Err(why) = update_guild_name(&new_incomplete, &self.pool).await {
             println!("Error updating guild: {why}");
         }
     }
 
-    async fn guild_delete(&self, _ctx: Context, incomplete: UnavailableGuild, full: Option<Guild>) {
+    async fn guild_delete(
+        &self,
+        _ctx: Context,
+        incomplete: UnavailableGuild,
+        full: Option<Guild>,
+    ) {
         if incomplete.unavailable {
             return;
         }
@@ -215,13 +245,19 @@ impl EventHandler for BotEvents {
             Some(guild) => guild,
             None => return,
         };
-        if let Err(why) = sqlx::query!("DELETE FROM guilds WHERE id = ?", guild.id.get())
-            .execute(&self.pool)
-            .await
+        if let Err(why) =
+            sqlx::query!("DELETE FROM guilds WHERE id = ?", guild.id.get())
+                .execute(&self.pool)
+                .await
         {
             println!("Error removing guild: {why}");
         }
     }
 
-    async fn resume(&self, _ctx: Context, _data: ResumedEvent) {}
+    async fn resume(
+        &self,
+        _ctx: Context,
+        _data: ResumedEvent,
+    ) {
+    }
 }

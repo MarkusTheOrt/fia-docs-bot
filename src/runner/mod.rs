@@ -82,7 +82,9 @@ impl From<ImageDoc> for Vec<CreateEmbed> {
         }
 
         for image in value.images.into_iter().skip(1).take(3) {
-            return_array.push(CreateEmbed::new().url(value.url.clone()).image(image.url));
+            return_array.push(
+                CreateEmbed::new().url(value.url.clone()).image(image.url),
+            );
         }
         drop(value.url);
         return return_array;
@@ -111,7 +113,11 @@ impl Default for ThreadCache {
 }
 
 #[tokio::main]
-pub async fn runner(ctx: Context, pool: Pool<MySql>, guild_cache: Arc<Mutex<GuildCache>>) {
+pub async fn runner(
+    ctx: Context,
+    pool: Pool<MySql>,
+    guild_cache: Arc<Mutex<GuildCache>>,
+) {
     let mut thread_cache = ThreadCache::default();
     loop {
         populate_cache(&pool, &mut thread_cache).await;
@@ -123,9 +129,12 @@ pub async fn runner(ctx: Context, pool: Pool<MySql>, guild_cache: Arc<Mutex<Guil
         };
 
         create_threads(&pool, &guilds, &ctx, &mut thread_cache).await;
-        run_internal(&pool, RacingSeries::F1, &guilds, &ctx, &mut thread_cache).await;
-        run_internal(&pool, RacingSeries::F2, &guilds, &ctx, &mut thread_cache).await;
-        run_internal(&pool, RacingSeries::F3, &guilds, &ctx, &mut thread_cache).await;
+        run_internal(&pool, RacingSeries::F1, &guilds, &ctx, &mut thread_cache)
+            .await;
+        run_internal(&pool, RacingSeries::F2, &guilds, &ctx, &mut thread_cache)
+            .await;
+        run_internal(&pool, RacingSeries::F3, &guilds, &ctx, &mut thread_cache)
+            .await;
     }
 }
 
@@ -148,9 +157,10 @@ async fn create_threads(
         Err(_) => return,
     };
     for event in events.into_iter() {
-        if let Err(why) = sqlx::query!("UPDATE events SET new = 0 WHERE id = ?", event.id)
-            .execute(pool)
-            .await
+        if let Err(why) =
+            sqlx::query!("UPDATE events SET new = 0 WHERE id = ?", event.id)
+                .execute(pool)
+                .await
         {
             println!("Error marking event as done: {why}");
             continue;
@@ -174,18 +184,24 @@ async fn create_threads(
             let thread = match channel
                 .create_thread(
                     ctx,
-                    CreateThread::new(format!("{} {} {}", event.year, event.series, event.name))
-                        .audit_log_reason("New event thread")
-                        .kind(PublicThread)
-                        .auto_archive_duration(AutoArchiveDuration::ThreeDays),
+                    CreateThread::new(format!(
+                        "{} {} {}",
+                        event.year, event.series, event.name
+                    ))
+                    .audit_log_reason("New event thread")
+                    .kind(PublicThread)
+                    .auto_archive_duration(AutoArchiveDuration::ThreeDays),
                 )
                 .await
             {
                 Ok(data) => data,
                 Err(why) => {
-                    println!("Error creating thread for guild {}: {why}", guild.id);
+                    println!(
+                        "Error creating thread for guild {}: {why}",
+                        guild.id
+                    );
                     continue;
-                }
+                },
             };
             let thread = MinThread {
                 id: thread.id.get(),
@@ -224,7 +240,7 @@ async fn run_internal(
         Err(why) => {
             eprintln!("Error reading unposted docs from db:\n{why}");
             return;
-        }
+        },
     };
 
     for doc in docs.into_iter() {
@@ -251,7 +267,10 @@ async fn run_internal(
                 {
                     let id = ChannelId::new(thread.id);
                     if let Err(why) = id.send_message(&ctx, msg).await {
-                        println!("Error sending msg in thread: [{}] {why}", guild.id);
+                        println!(
+                            "Error sending msg in thread: [{}] {why}",
+                            guild.id
+                        );
                         continue;
                     }
                 } else {
@@ -270,7 +289,10 @@ async fn run_internal(
     }
 }
 
-async fn populate_guild_cache(pool: &Pool<MySql>, guild_cache: &Arc<Mutex<GuildCache>>) {
+async fn populate_guild_cache(
+    pool: &Pool<MySql>,
+    guild_cache: &Arc<Mutex<GuildCache>>,
+) {
     {
         let cache = guild_cache.lock().unwrap();
         if (Utc::now() - cache.last_populated).num_days() < 1 {
@@ -292,7 +314,7 @@ async fn populate_guild_cache(pool: &Pool<MySql>, guild_cache: &Arc<Mutex<GuildC
         Err(why) => {
             println!("Error fetching guilds: {why}");
             return;
-        }
+        },
     };
     let mut cache_mut = guild_cache.lock().unwrap();
     cache_mut.cache.clear();
@@ -303,7 +325,10 @@ async fn populate_guild_cache(pool: &Pool<MySql>, guild_cache: &Arc<Mutex<GuildC
     cache_mut.last_populated = Utc::now();
 }
 
-async fn insert_thread(pool: &Pool<MySql>, thread: &MinThread) -> Result<(), sqlx::Error> {
+async fn insert_thread(
+    pool: &Pool<MySql>,
+    thread: &MinThread,
+) -> Result<(), sqlx::Error> {
     sqlx::query!(
         "INSERT INTO threads (id, guild, event, year) VALUES (?, ?, ?, ?)",
         thread.id,
@@ -316,17 +341,24 @@ async fn insert_thread(pool: &Pool<MySql>, thread: &MinThread) -> Result<(), sql
     return Ok(());
 }
 
-async fn mark_doc_done(pool: &Pool<MySql>, doc: &ImageDoc) -> Result<(), Box<dyn Error>> {
-    let t = sqlx::query!("UPDATE documents SET notified = 1 WHERE id = ?", doc.id)
-        .execute(pool)
-        .await?;
+async fn mark_doc_done(
+    pool: &Pool<MySql>,
+    doc: &ImageDoc,
+) -> Result<(), Box<dyn Error>> {
+    let t =
+        sqlx::query!("UPDATE documents SET notified = 1 WHERE id = ?", doc.id)
+            .execute(pool)
+            .await?;
     if t.rows_affected() == 0 {
         return Err(String::from("Rows affected = 0").into());
     }
     return Ok(());
 }
 
-fn create_message(doc: &ImageDoc, role: Option<u64>) -> CreateMessage {
+fn create_message(
+    doc: &ImageDoc,
+    role: Option<u64>,
+) -> CreateMessage {
     let embeds: Vec<CreateEmbed> = doc.clone().into();
     let message = CreateMessage::new().embeds(embeds);
     if let Some(role) = role {
@@ -335,7 +367,10 @@ fn create_message(doc: &ImageDoc, role: Option<u64>) -> CreateMessage {
     return message;
 }
 
-async fn populate_cache(pool: &Pool<MySql>, cache: &mut ThreadCache) {
+async fn populate_cache(
+    pool: &Pool<MySql>,
+    cache: &mut ThreadCache,
+) {
     if (Utc::now() - cache.last_populated).num_days() < 1 {
         return;
     }
@@ -354,7 +389,7 @@ async fn populate_cache(pool: &Pool<MySql>, cache: &mut ThreadCache) {
         Err(why) => {
             println!("Error populating threads: {why}");
             return;
-        }
+        },
     };
     println!("poopulated thread cache");
     cache.last_populated = Utc::now();

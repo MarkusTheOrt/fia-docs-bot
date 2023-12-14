@@ -16,7 +16,12 @@ pub struct Document {
 }
 
 impl Document {
-    pub fn new(series: RacingSeries, url: &str, title: &str, date: DateTime<Utc>) -> Self {
+    pub fn new(
+        series: RacingSeries,
+        url: &str,
+        title: &str,
+        date: DateTime<Utc>,
+    ) -> Self {
         return Self {
             id: None,
             event: None,

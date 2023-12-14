@@ -7,8 +7,9 @@ use serenity::{
         PartialChannel, ResolvedOption, ResolvedValue, Role,
     },
     builder::{
-        CreateCommand, CreateCommandOption, CreateEmbed, CreateInteractionResponse,
-        CreateInteractionResponseFollowup, CreateInteractionResponseMessage,
+        CreateCommand, CreateCommandOption, CreateEmbed,
+        CreateInteractionResponse, CreateInteractionResponseFollowup,
+        CreateInteractionResponseMessage,
     },
     model::permissions::Permissions,
     prelude::Context,
@@ -29,16 +30,24 @@ pub fn register() -> CreateCommand {
 }
 
 fn create_option(series: RacingSeries) -> CreateCommandOption {
-    return CreateCommandOption::new(SubCommand, series, "Settings for the series")
-        .add_sub_option(create_thread_option())
-        .add_sub_option(create_channel_option())
-        .add_sub_option(create_role_option());
+    return CreateCommandOption::new(
+        SubCommand,
+        series,
+        "Settings for the series",
+    )
+    .add_sub_option(create_thread_option())
+    .add_sub_option(create_channel_option())
+    .add_sub_option(create_role_option());
 }
 
 fn create_channel_option() -> CreateCommandOption {
-    return CreateCommandOption::new(Channel, "channel", "Channel to post documents in")
-        .channel_types(vec![ChannelType::Text])
-        .required(false);
+    return CreateCommandOption::new(
+        Channel,
+        "channel",
+        "Channel to post documents in",
+    )
+    .channel_types(vec![ChannelType::Text])
+    .required(false);
 }
 
 fn create_thread_option() -> CreateCommandOption {
@@ -58,7 +67,10 @@ fn create_role_option() -> CreateCommandOption {
     );
 }
 
-fn error_embed(title: &str, description: &str) -> CreateEmbed {
+fn error_embed(
+    title: &str,
+    description: &str,
+) -> CreateEmbed {
     return CreateEmbed::new()
         .title(title)
         .description(description)
@@ -73,12 +85,12 @@ pub async fn run(
 ) -> Result<(), serenity::Error> {
     if cmd.guild_id.is_none() {
         let builder = CreateInteractionResponse::Message(
-            CreateInteractionResponseMessage::new()
-                .ephemeral(true)
-                .embed(error_embed(
+            CreateInteractionResponseMessage::new().ephemeral(true).embed(
+                error_embed(
                     "Error",
                     "Command can only be run in a guild / server.",
-                )),
+                ),
+            ),
         );
         cmd.create_response(ctx, builder).await?;
         return Ok(());
@@ -91,30 +103,42 @@ pub async fn run(
     if let Some(command) = subcommand {
         if let ResolvedValue::SubCommand(options) = command.value {
             let rv = match command.name {
-                "f1" => series_command(RacingSeries::F1, pool, &cmd, options, cache).await,
-                "f2" => series_command(RacingSeries::F2, pool, &cmd, options, cache).await,
-                "f3" => series_command(RacingSeries::F3, pool, &cmd, options, cache).await,
+                "f1" => {
+                    series_command(RacingSeries::F1, pool, &cmd, options, cache)
+                        .await
+                },
+                "f2" => {
+                    series_command(RacingSeries::F2, pool, &cmd, options, cache)
+                        .await
+                },
+                "f3" => {
+                    series_command(RacingSeries::F3, pool, &cmd, options, cache)
+                        .await
+                },
                 _ => {
                     let builder = CreateInteractionResponseFollowup::new()
                         .ephemeral(true)
-                        .embed(error_embed("Error", "Error invalid series selected."));
+                        .embed(error_embed(
+                            "Error",
+                            "Error invalid series selected.",
+                        ));
                     cmd.create_followup(ctx, builder).await?;
                     return Ok(());
-                }
+                },
             };
             match rv {
                 Err(why) => {
-                    let builder =
-                        CreateInteractionResponseFollowup::new().embed(error_embed("Error", &why));
+                    let builder = CreateInteractionResponseFollowup::new()
+                        .embed(error_embed("Error", &why));
                     cmd.create_followup(ctx, builder).await?;
                     return Ok(());
-                }
+                },
                 Ok(s) => {
-                    let builder =
-                        CreateInteractionResponseFollowup::new().embed(error_embed("Success", &s));
+                    let builder = CreateInteractionResponseFollowup::new()
+                        .embed(error_embed("Success", &s));
                     cmd.create_followup(ctx, builder).await?;
                     return Ok(());
-                }
+                },
             };
         }
     } else {
@@ -156,7 +180,9 @@ async fn series_command<'a>(
     // Write the results into our cache so we don't have to query the database every 5 seconds..u
     {
         let mut cache = cache.lock().unwrap();
-        if let Some(guild) = cache.cache.iter_mut().find(|p| p.id == guild.get()) {
+        if let Some(guild) =
+            cache.cache.iter_mut().find(|p| p.id == guild.get())
+        {
             let series = match series {
                 RacingSeries::F1 => &mut guild.f1,
                 RacingSeries::F2 => &mut guild.f2,
@@ -172,7 +198,9 @@ async fn series_command<'a>(
         }
     }
 
-    match series_query(pool, series, channel_id, threads, role_id, guild.get()).await {
+    match series_query(pool, series, channel_id, threads, role_id, guild.get())
+        .await
+    {
         Ok(_) => {
             if role_id.is_some() && channel.is_some() {
                 return Ok(format!(
@@ -193,12 +221,14 @@ async fn series_command<'a>(
                     threads
                 ));
             } else {
-                return Ok(format!("cleared channel, won't be notified anymore."));
+                return Ok(format!(
+                    "cleared channel, won't be notified anymore."
+                ));
             }
-        }
+        },
         Err(why) => {
             return Err(format!("Database Error: ```log\n{why}```"));
-        }
+        },
     }
 }
 
@@ -225,7 +255,7 @@ async fn series_query(
             )
             .execute(pool)
             .await;
-        }
+        },
         RacingSeries::F2 => {
             return sqlx::query!(
                 r#"UPDATE guilds
@@ -240,7 +270,7 @@ async fn series_query(
             )
             .execute(pool)
             .await;
-        }
+        },
         RacingSeries::F3 => {
             return sqlx::query!(
                 r#"UPDATE guilds
@@ -255,12 +285,12 @@ async fn series_query(
             )
             .execute(pool)
             .await;
-        }
+        },
     }
 }
 
 fn resolve_options<'a>(
-    options: Vec<ResolvedOption<'a>>,
+    options: Vec<ResolvedOption<'a>>
 ) -> Option<(Option<&'a PartialChannel>, bool, Option<&'a Role>)> {
     let mut it = options.into_iter();
     let threads = it.next().take();
@@ -275,7 +305,7 @@ fn resolve_options<'a>(
                 } else {
                     None
                 }
-            }
+            },
         };
         let role = match role {
             None => None,
@@ -285,7 +315,7 @@ fn resolve_options<'a>(
                 } else {
                     None
                 }
-            }
+            },
         };
         if let ResolvedValue::Boolean(threads) = threads.value {
             return Some((channel, threads, role));

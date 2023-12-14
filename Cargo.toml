@@ -1,15 +1,15 @@
 [package]
 name = "fia-docs-bot"
-version = "0.1.0"
+version = "0.7.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-chrono = { version = "0.4.24", features = ["serde"] }
+chrono = { version = "0.4.31", features = ["serde"] }
 dotenvy = "0.15.7"
-reqwest = "0.11.18"
-serde = { version = "1.0.163", features = ["derive"] }
-serenity = { git = "https://github.com/serenity-rs/serenity", branch = "next", version = "0.11.5" }
-sqlx = { version = "0.7.0", features = ["mysql", "chrono", "runtime-tokio-native-tls"] }
-tokio = { version = "1.28.1", features = ["full"] }
+reqwest = "0.11.22"
+serde = { version = "1.0.193", features = ["derive"] }
+serenity = { version = "0.12.0" }
+sqlx = { version = "0.7.3", features = ["mysql", "chrono", "runtime-tokio-native-tls"] }
+tokio = { version = "1.35.0", features = ["full"] }

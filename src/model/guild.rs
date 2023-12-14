@@ -31,7 +31,7 @@ pub async fn insert_new_guild(
     {
         let mut cache = guild_cache.lock().unwrap();
         match cache.cache.iter_mut().find(|p| p.id == guild.id.get()) {
-            Some(_) => {}
+            Some(_) => {},
             None => {
                 cache.cache.push(CachedGuild {
                     id: guild.id.get(),
@@ -39,7 +39,7 @@ pub async fn insert_new_guild(
                     f2: SeriesSettings::default(),
                     f3: SeriesSettings::default(),
                 });
-            }
+            },
         }
     }
 

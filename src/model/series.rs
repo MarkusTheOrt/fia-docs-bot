@@ -13,7 +13,10 @@ pub enum RacingSeries {
 }
 
 impl fmt::Display for RacingSeries {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(
+        &self,
+        f: &mut Formatter<'_>,
+    ) -> std::fmt::Result {
         match self {
             Self::F1 => return write!(f, "F1"),
             Self::F2 => return write!(f, "F2"),
@@ -24,7 +27,7 @@ impl fmt::Display for RacingSeries {
 
 impl<'r> Decode<'r, sqlx::MySql> for RacingSeries {
     fn decode(
-        value: <sqlx::MySql as sqlx::database::HasValueRef<'r>>::ValueRef,
+        value: <sqlx::MySql as sqlx::database::HasValueRef<'r>>::ValueRef
     ) -> Result<Self, sqlx::error::BoxDynError> {
         let variant = <String as Decode<MySql>>::decode(value)?;
         let series: RacingSeries = variant.into();
@@ -43,7 +46,7 @@ impl<'q> Encode<'q, MySql> for RacingSeries {
             RacingSeries::F3 => buf.write_all(b"f3"),
         } {
             Err(_) => return sqlx::encode::IsNull::Yes,
-            _ => {}
+            _ => {},
         }
         return sqlx::encode::IsNull::No;
     }
