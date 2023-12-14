@@ -155,7 +155,7 @@ impl EventHandler for BotEvents {
             name: "FIA Documents".to_owned(),
             kind: ActivityType::Listening,
             url: None,
-            state: None
+            state: None,
         }));
 
         println!(
@@ -172,9 +172,7 @@ impl EventHandler for BotEvents {
     ) {
         if let Interaction::Command(cmd) = interaction {
             if let Err(why) = match cmd.data.name.as_str() {
-                "settings" => {
-                    run(self.db, &ctx, cmd, &self.guild_cache).await
-                },
+                "settings" => run(self.db, &ctx, cmd, &self.guild_cache).await,
                 _ => unimplemented(&ctx, cmd).await,
             } {
                 println!("cmd error: {why}")

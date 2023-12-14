@@ -14,4 +14,3 @@ pub struct Document {
     pub image: Option<String>,
     pub notified: i8,
 }
-

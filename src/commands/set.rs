@@ -30,24 +30,16 @@ pub fn register() -> CreateCommand {
 }
 
 fn create_option(series: RacingSeries) -> CreateCommandOption {
-    CreateCommandOption::new(
-        SubCommand,
-        series,
-        "Settings for the series",
-    )
-    .add_sub_option(create_thread_option())
-    .add_sub_option(create_channel_option())
-    .add_sub_option(create_role_option())
+    CreateCommandOption::new(SubCommand, series, "Settings for the series")
+        .add_sub_option(create_thread_option())
+        .add_sub_option(create_channel_option())
+        .add_sub_option(create_role_option())
 }
 
 fn create_channel_option() -> CreateCommandOption {
-    CreateCommandOption::new(
-        Channel,
-        "channel",
-        "Channel to post documents in",
-    )
-    .channel_types(vec![ChannelType::Text])
-    .required(false)
+    CreateCommandOption::new(Channel, "channel", "Channel to post documents in")
+        .channel_types(vec![ChannelType::Text])
+        .required(false)
 }
 
 fn create_thread_option() -> CreateCommandOption {
@@ -71,10 +63,7 @@ fn error_embed(
     title: &str,
     description: &str,
 ) -> CreateEmbed {
-    CreateEmbed::new()
-        .title(title)
-        .description(description)
-        .color(0xFF0000)
+    CreateEmbed::new().title(title).description(description).color(0xFF0000)
 }
 
 pub async fn run(
@@ -210,12 +199,12 @@ async fn series_command<'a>(
                     threads
                 ));
             } else {
-                return Ok("cleared channel, won't be notified anymore.".to_string());
+                return Ok(
+                    "cleared channel, won't be notified anymore.".to_string()
+                );
             }
         },
-        Err(why) => {
-            Err(format!("Database Error: ```log\n{why}```"))
-        },
+        Err(why) => Err(format!("Database Error: ```log\n{why}```")),
     }
 }
 

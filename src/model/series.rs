@@ -41,11 +41,13 @@ impl<'q> Encode<'q, MySql> for RacingSeries {
         buf: &mut <MySql as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
     ) -> sqlx::encode::IsNull {
         if (match self {
-                    RacingSeries::F1 => buf.write_all(b"f1"),
-                    RacingSeries::F2 => buf.write_all(b"f2"),
-                    RacingSeries::F3 => buf.write_all(b"f3"),
-                }).is_err() {
-            return sqlx::encode::IsNull::Yes
+            RacingSeries::F1 => buf.write_all(b"f1"),
+            RacingSeries::F2 => buf.write_all(b"f2"),
+            RacingSeries::F3 => buf.write_all(b"f3"),
+        })
+        .is_err()
+        {
+            return sqlx::encode::IsNull::Yes;
         }
         sqlx::encode::IsNull::No
     }
