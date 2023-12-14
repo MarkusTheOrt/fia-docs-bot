@@ -52,7 +52,7 @@ pub struct CachedGuild {
 
 impl From<AllGuild> for CachedGuild {
     fn from(value: AllGuild) -> Self {
-        return Self {
+        Self {
             id: value.id,
             f1: SeriesSettings {
                 channel: value.f1_channel,
@@ -69,36 +69,13 @@ impl From<AllGuild> for CachedGuild {
                 use_threads: value.f3_threads,
                 role: value.f3_role,
             },
-        };
+        }
     }
 }
 
 pub struct GuildCache {
     pub last_populated: DateTime<Utc>,
     pub cache: Vec<CachedGuild>,
-}
-
-impl CachedGuild {
-    pub fn new(id: u64) -> Self {
-        return Self {
-            id,
-            f1: SeriesSettings {
-                channel: None,
-                use_threads: true,
-                role: None,
-            },
-            f2: SeriesSettings {
-                channel: None,
-                use_threads: true,
-                role: None,
-            },
-            f3: SeriesSettings {
-                channel: None,
-                use_threads: true,
-                role: None,
-            },
-        };
-    }
 }
 
 impl Default for GuildCache {

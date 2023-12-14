@@ -19,62 +19,62 @@ use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
 use crate::{event_manager::GuildCache, model::series::RacingSeries};
 
 pub fn register() -> CreateCommand {
-    return CreateCommand::new("settings")
+    CreateCommand::new("settings")
         .description("Set up the FIA Documents Bot")
         .default_member_permissions(Permissions::ADMINISTRATOR)
         .set_options(vec![
             create_option(RacingSeries::F1),
             create_option(RacingSeries::F2),
             create_option(RacingSeries::F3),
-        ]);
+        ])
 }
 
 fn create_option(series: RacingSeries) -> CreateCommandOption {
-    return CreateCommandOption::new(
+    CreateCommandOption::new(
         SubCommand,
         series,
         "Settings for the series",
     )
     .add_sub_option(create_thread_option())
     .add_sub_option(create_channel_option())
-    .add_sub_option(create_role_option());
+    .add_sub_option(create_role_option())
 }
 
 fn create_channel_option() -> CreateCommandOption {
-    return CreateCommandOption::new(
+    CreateCommandOption::new(
         Channel,
         "channel",
         "Channel to post documents in",
     )
     .channel_types(vec![ChannelType::Text])
-    .required(false);
+    .required(false)
 }
 
 fn create_thread_option() -> CreateCommandOption {
-    return CreateCommandOption::new(
+    CreateCommandOption::new(
         serenity::all::CommandOptionType::Boolean,
         "threads",
         "Whether or not to use threads (default = true)",
     )
-    .required(true);
+    .required(true)
 }
 
 fn create_role_option() -> CreateCommandOption {
-    return CreateCommandOption::new(
+    CreateCommandOption::new(
         serenity::all::CommandOptionType::Role,
         "notify_role",
         "Optional Role that will be notified using @Role",
-    );
+    )
 }
 
 fn error_embed(
     title: &str,
     description: &str,
 ) -> CreateEmbed {
-    return CreateEmbed::new()
+    CreateEmbed::new()
         .title(title)
         .description(description)
-        .color(0xFF0000);
+        .color(0xFF0000)
 }
 
 pub async fn run(
@@ -151,7 +151,7 @@ pub async fn run(
         cmd.create_followup(ctx, builder).await?;
     }
 
-    return Ok(());
+    Ok(())
 }
 
 async fn series_command<'a>(
@@ -167,16 +167,9 @@ async fn series_command<'a>(
     }
     let (channel, threads, role) = options.unwrap();
     let guild = cmd.guild_id.unwrap();
-    let role_id = match role {
-        Some(role) => Some(role.id.get()),
-        None => None,
-    };
+    let role_id = role.map(|role| role.id.get());
 
-    let channel_id = if let Some(channel) = channel {
-        Some(channel.id.get())
-    } else {
-        None
-    };
+    let channel_id = channel.map(|channel| channel.id.get());
     // Write the results into our cache so we don't have to query the database every 5 seconds..u
     {
         let mut cache = cache.lock().unwrap();
@@ -188,12 +181,8 @@ async fn series_command<'a>(
                 RacingSeries::F2 => &mut guild.f2,
                 RacingSeries::F3 => &mut guild.f3,
             };
-            series.role = role_id.clone();
-            series.channel = if let Some(channel) = channel {
-                Some(channel.id.get())
-            } else {
-                None
-            };
+            series.role = role_id;
+            series.channel = channel.map(|channel| channel.id.get());
             series.use_threads = threads;
         }
     }
@@ -203,7 +192,7 @@ async fn series_command<'a>(
     {
         Ok(_) => {
             if role_id.is_some() && channel.is_some() {
-                return Ok(format!(
+                Ok(format!(
                     r#"Updated settings for {series}
                 notify_role <@&{}>
                 channel <#{}>
@@ -211,7 +200,7 @@ async fn series_command<'a>(
                     role_id.unwrap(),
                     channel.unwrap().id.get(),
                     threads
-                ));
+                ))
             } else if channel.is_some() {
                 return Ok(format!(
                     r#"Updated settings for {series}
@@ -221,13 +210,11 @@ async fn series_command<'a>(
                     threads
                 ));
             } else {
-                return Ok(format!(
-                    "cleared channel, won't be notified anymore."
-                ));
+                return Ok("cleared channel, won't be notified anymore.".to_string());
             }
         },
         Err(why) => {
-            return Err(format!("Database Error: ```log\n{why}```"));
+            Err(format!("Database Error: ```log\n{why}```"))
         },
     }
 }
@@ -242,7 +229,7 @@ async fn series_query(
 ) -> Result<MySqlQueryResult, sqlx::Error> {
     match series {
         RacingSeries::F1 => {
-            return sqlx::query!(
+            sqlx::query!(
                 r#"UPDATE guilds
                    SET f1_channel = ?,
                    f1_threads = ?,
@@ -254,10 +241,10 @@ async fn series_query(
                 guild
             )
             .execute(pool)
-            .await;
+            .await
         },
         RacingSeries::F2 => {
-            return sqlx::query!(
+            sqlx::query!(
                 r#"UPDATE guilds
                    SET f2_channel = ?,
                    f2_threads = ?,
@@ -269,10 +256,10 @@ async fn series_query(
                 guild
             )
             .execute(pool)
-            .await;
+            .await
         },
         RacingSeries::F3 => {
-            return sqlx::query!(
+            sqlx::query!(
                 r#"UPDATE guilds
                    SET f3_channel = ?,
                    f3_threads = ?,
@@ -284,14 +271,14 @@ async fn series_query(
                 guild
             )
             .execute(pool)
-            .await;
+            .await
         },
     }
 }
 
-fn resolve_options<'a>(
-    options: Vec<ResolvedOption<'a>>
-) -> Option<(Option<&'a PartialChannel>, bool, Option<&'a Role>)> {
+fn resolve_options(
+    options: Vec<ResolvedOption<'_>>
+) -> Option<(Option<&PartialChannel>, bool, Option<&Role>)> {
     let mut it = options.into_iter();
     let threads = it.next().take();
     let channel = it.next().take();
@@ -321,5 +308,5 @@ fn resolve_options<'a>(
             return Some((channel, threads, role));
         }
     }
-    return None;
+    None
 }

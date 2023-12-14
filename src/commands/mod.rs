@@ -15,5 +15,5 @@ pub async fn unimplemented(
             .ephemeral(true)
             .content("Not implemented!"),
     );
-    return command.create_response(ctx, resp).await;
+    command.create_response(ctx, resp).await
 }

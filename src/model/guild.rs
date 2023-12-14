@@ -43,7 +43,7 @@ pub async fn insert_new_guild(
         }
     }
 
-    return sqlx::query!(
+    sqlx::query!(
         "INSERT INTO guilds(id, name, joined) VALUES (?, ?, ?) ON DUPLICATE KEY update name = ?",
         new_guild.id,
         new_guild.name,
@@ -51,18 +51,18 @@ pub async fn insert_new_guild(
         new_guild.name
     )
     .execute(pool)
-    .await;
+    .await
 }
 
 pub async fn update_guild_name(
     guild: &PartialGuild,
     pool: &Pool<MySql>,
 ) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
-    return sqlx::query!(
+    sqlx::query!(
         "UPDATE guilds SET name = ? WHERE id = ?",
         guild.name,
         guild.id.get()
     )
     .execute(pool)
-    .await;
+    .await
 }

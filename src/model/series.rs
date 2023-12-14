@@ -18,9 +18,9 @@ impl fmt::Display for RacingSeries {
         f: &mut Formatter<'_>,
     ) -> std::fmt::Result {
         match self {
-            Self::F1 => return write!(f, "F1"),
-            Self::F2 => return write!(f, "F2"),
-            Self::F3 => return write!(f, "F3"),
+            Self::F1 => write!(f, "F1"),
+            Self::F2 => write!(f, "F2"),
+            Self::F3 => write!(f, "F3"),
         }
     }
 }
@@ -31,7 +31,7 @@ impl<'r> Decode<'r, sqlx::MySql> for RacingSeries {
     ) -> Result<Self, sqlx::error::BoxDynError> {
         let variant = <String as Decode<MySql>>::decode(value)?;
         let series: RacingSeries = variant.into();
-        return Ok(series);
+        Ok(series)
     }
 }
 
@@ -40,24 +40,23 @@ impl<'q> Encode<'q, MySql> for RacingSeries {
         &self,
         buf: &mut <MySql as sqlx::database::HasArguments<'q>>::ArgumentBuffer,
     ) -> sqlx::encode::IsNull {
-        match match self {
-            RacingSeries::F1 => buf.write_all(b"f1"),
-            RacingSeries::F2 => buf.write_all(b"f2"),
-            RacingSeries::F3 => buf.write_all(b"f3"),
-        } {
-            Err(_) => return sqlx::encode::IsNull::Yes,
-            _ => {},
+        if (match self {
+                    RacingSeries::F1 => buf.write_all(b"f1"),
+                    RacingSeries::F2 => buf.write_all(b"f2"),
+                    RacingSeries::F3 => buf.write_all(b"f3"),
+                }).is_err() {
+            return sqlx::encode::IsNull::Yes
         }
-        return sqlx::encode::IsNull::No;
+        sqlx::encode::IsNull::No
     }
 }
 
 impl From<&String> for RacingSeries {
     fn from(value: &String) -> Self {
         match value.to_lowercase().as_str() {
-            "f1" | "formula1" => return Self::F1,
-            "f2" | "formula2" => return Self::F2,
-            "f3" | "formula3" => return Self::F3,
+            "f1" | "formula1" => Self::F1,
+            "f2" | "formula2" => Self::F2,
+            "f3" | "formula3" => Self::F3,
             _ => panic!("cannot parse this value."),
         }
     }
@@ -66,9 +65,9 @@ impl From<&String> for RacingSeries {
 impl From<RacingSeries> for String {
     fn from(value: RacingSeries) -> Self {
         match value {
-            RacingSeries::F1 => return "f1".to_owned(),
-            RacingSeries::F2 => return "f2".to_owned(),
-            RacingSeries::F3 => return "f3".to_owned(),
+            RacingSeries::F1 => "f1".to_owned(),
+            RacingSeries::F2 => "f2".to_owned(),
+            RacingSeries::F3 => "f3".to_owned(),
         }
     }
 }
@@ -76,9 +75,9 @@ impl From<RacingSeries> for String {
 impl From<String> for RacingSeries {
     fn from(value: String) -> Self {
         match value.to_lowercase().as_str() {
-            "f1" | "formula1" => return Self::F1,
-            "f2" | "formula2" => return Self::F2,
-            "f3" | "formula3" => return Self::F3,
+            "f1" | "formula1" => Self::F1,
+            "f2" | "formula2" => Self::F2,
+            "f3" | "formula3" => Self::F3,
             _ => panic!("cannot parse this value."),
         }
     }

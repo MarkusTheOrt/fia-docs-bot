@@ -55,6 +55,7 @@ struct MinImg {
 pub struct ImageDoc {
     id: u64,
     event: u64,
+    #[allow(unused)]
     event_name: String,
     title: String,
     url: String,
@@ -87,7 +88,7 @@ impl From<ImageDoc> for Vec<CreateEmbed> {
             );
         }
         drop(value.url);
-        return return_array;
+        return_array
     }
 }
 
@@ -218,24 +219,24 @@ async fn create_threads(
 }
 
 async fn new_events(pool: &Pool<MySql>) -> Result<Vec<NewEvent>, sqlx::Error> {
-    return sqlx::query_as_unchecked!(
+    sqlx::query_as_unchecked!(
         NewEvent,
         r#"
     SELECT `id` as `id!`, name, year, series FROM events WHERE new = 1
     "#
     )
     .fetch_all(pool)
-    .await;
+    .await
 }
 
 async fn run_internal(
     pool: &Pool<MySql>,
     series: RacingSeries,
-    guild_cache: &Vec<CachedGuild>,
+    guild_cache: &[CachedGuild],
     ctx: &Context,
     thread_cache: &mut ThreadCache,
 ) {
-    let docs = match unposted_documents(&pool, series).await {
+    let docs = match unposted_documents(pool, series).await {
         Ok(data) => join_to_doc(data),
         Err(why) => {
             eprintln!("Error reading unposted docs from db:\n{why}");
@@ -244,7 +245,7 @@ async fn run_internal(
     };
 
     for doc in docs.into_iter() {
-        if let Err(why) = mark_doc_done(&pool, &doc).await {
+        if let Err(why) = mark_doc_done(pool, &doc).await {
             println!("Error marking doc as done:\n{why}");
             continue;
         }
@@ -338,7 +339,7 @@ async fn insert_thread(
     )
     .execute(pool)
     .await?;
-    return Ok(());
+    Ok(())
 }
 
 async fn mark_doc_done(
@@ -352,7 +353,7 @@ async fn mark_doc_done(
     if t.rows_affected() == 0 {
         return Err(String::from("Rows affected = 0").into());
     }
-    return Ok(());
+    Ok(())
 }
 
 fn create_message(
@@ -364,7 +365,7 @@ fn create_message(
     if let Some(role) = role {
         return message.content(format!("<@&{}>", role));
     }
-    return message;
+    message
 }
 
 async fn populate_cache(
@@ -424,14 +425,14 @@ fn join_to_doc(join_data: Vec<JoinImage>) -> Vec<ImageDoc> {
             created: doc_with_img.created,
         });
     }
-    return docs;
+    docs
 }
 
 async fn unposted_documents(
     pool: &Pool<MySql>,
     racing_series: RacingSeries,
 ) -> Result<Vec<JoinImage>, sqlx::Error> {
-    return sqlx::query_as_unchecked!(
+    sqlx::query_as_unchecked!(
         JoinImage,
         r#"
     SELECT
@@ -453,5 +454,5 @@ async fn unposted_documents(
         Into::<String>::into(racing_series)
     )
     .fetch_all(pool)
-    .await;
+    .await
 }

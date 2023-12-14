@@ -15,22 +15,3 @@ pub struct Document {
     pub notified: i8,
 }
 
-impl Document {
-    pub fn new(
-        series: RacingSeries,
-        url: &str,
-        title: &str,
-        date: DateTime<Utc>,
-    ) -> Self {
-        return Self {
-            id: None,
-            event: None,
-            series,
-            url: url.to_owned(),
-            title: title.to_owned(),
-            date,
-            image: None,
-            notified: 0,
-        };
-    }
-}
