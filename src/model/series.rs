@@ -2,8 +2,8 @@ use std::fmt::{self, Formatter};
 use std::{io::Write, str::FromStr};
 
 use serde::{Deserialize, Serialize};
-use sqlx::{Encode, MySql};
 use sqlx::decode::Decode;
+use sqlx::{Encode, MySql};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum RacingSeries {
@@ -17,7 +17,7 @@ impl fmt::Display for RacingSeries {
         match self {
             Self::F1 => return write!(f, "F1"),
             Self::F2 => return write!(f, "F2"),
-            Self::F3 => return write!(f, "F3")
+            Self::F3 => return write!(f, "F3"),
         }
     }
 }

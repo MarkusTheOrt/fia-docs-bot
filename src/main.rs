@@ -1,4 +1,4 @@
-use std::sync::{Mutex, Arc, atomic::AtomicBool};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use event_manager::{BotEvents, GuildCache};
 use sqlx::{MySql, MySqlPool, Pool};
@@ -8,8 +8,8 @@ use serenity::{client::ClientBuilder, prelude::*};
 mod commands;
 mod event_manager;
 mod model;
-mod state;
 mod runner;
+mod state;
 
 pub async fn create_sqlx_client(connection: &str) -> Result<Pool<MySql>, sqlx::Error> {
     return MySqlPool::connect(connection).await;
@@ -40,20 +40,23 @@ async fn main() {
         }
     };
 
-    let event_manager = BotEvents { pool: pool.clone(), guild_cache: Arc::new(Mutex::new(GuildCache::default())), thread_lock: AtomicBool::new(false) };
+    let event_manager = BotEvents {
+        pool: pool.clone(),
+        guild_cache: Arc::new(Mutex::new(GuildCache::default())),
+        thread_lock: AtomicBool::new(false),
+    };
 
-    let mut client =
-        match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
+    let mut client = match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
         .event_handler(event_manager)
-        .await {
-            Ok(client) => client,
-            Err(why) => {
-                println!("Error creting client: {why}");
-                return;
-            }
-        };
+        .await
+    {
+        Ok(client) => client,
+        Err(why) => {
+            println!("Error creting client: {why}");
+            return;
+        }
+    };
     if let Err(why) = client.start().await {
         println!("Error running client: {why}");
     }
-    
 }

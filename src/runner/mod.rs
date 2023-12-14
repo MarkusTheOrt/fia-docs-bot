@@ -5,8 +5,8 @@ use std::time::{Duration, UNIX_EPOCH};
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Utc;
-use serenity::all::{ChannelId, AutoArchiveDuration};
 use serenity::all::ChannelType::PublicThread;
+use serenity::all::{AutoArchiveDuration, ChannelId};
 use serenity::builder::CreateEmbed;
 use serenity::builder::CreateEmbedAuthor;
 use serenity::builder::CreateMessage;
@@ -148,7 +148,10 @@ async fn create_threads(
         Err(_) => return,
     };
     for event in events.into_iter() {
-        if let Err(why) = sqlx::query!("UPDATE events SET new = 0 WHERE id = ?", event.id).execute(pool).await {
+        if let Err(why) = sqlx::query!("UPDATE events SET new = 0 WHERE id = ?", event.id)
+            .execute(pool)
+            .await
+        {
             println!("Error marking event as done: {why}");
             continue;
         }
@@ -174,7 +177,7 @@ async fn create_threads(
                     CreateThread::new(format!("{} {} {}", event.year, event.series, event.name))
                         .audit_log_reason("New event thread")
                         .kind(PublicThread)
-                    .auto_archive_duration(AutoArchiveDuration::ThreeDays)
+                        .auto_archive_duration(AutoArchiveDuration::ThreeDays),
                 )
                 .await
             {
@@ -184,7 +187,12 @@ async fn create_threads(
                     continue;
                 }
             };
-            let thread = MinThread { id: thread.id.get(), guild: guild.id, event: event.id, year: event.year };
+            let thread = MinThread {
+                id: thread.id.get(),
+                guild: guild.id,
+                event: event.id,
+                year: event.year,
+            };
             if let Err(why) = insert_thread(pool, &thread).await {
                 println!("Error adding thread to database: {why}");
             }

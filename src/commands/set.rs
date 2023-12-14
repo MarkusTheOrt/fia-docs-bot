@@ -147,8 +147,8 @@ async fn series_command<'a>(
         Some(role) => Some(role.id.get()),
         None => None,
     };
-    
-    let channel_id = if let Some(channel) = channel{
+
+    let channel_id = if let Some(channel) = channel {
         Some(channel.id.get())
     } else {
         None
@@ -172,16 +172,7 @@ async fn series_command<'a>(
         }
     }
 
-    match series_query(
-        pool,
-        series,
-        channel_id,
-        threads,
-        role_id,
-        guild.get(),
-    )
-    .await
-    {
+    match series_query(pool, series, channel_id, threads, role_id, guild.get()).await {
         Ok(_) => {
             if role_id.is_some() && channel.is_some() {
                 return Ok(format!(

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 use super::series::RacingSeries;
 
@@ -25,7 +25,7 @@ impl Document {
             title: title.to_owned(),
             date,
             image: None,
-            notified: 0
-        }
+            notified: 0,
+        };
     }
 }
