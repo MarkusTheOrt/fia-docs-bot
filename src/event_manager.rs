@@ -123,7 +123,7 @@ impl EventHandler for BotEvents {
         ctx: Context,
         _guilds: Vec<GuildId>,
     ) {
-        let res = match ctx.http.get_current_application_info().await {
+        let _ = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
             Err(why) => {
                 println!("error receiving Application Info: {why}");
@@ -178,6 +178,7 @@ impl EventHandler for BotEvents {
             name: "FIA Documents".to_owned(),
             kind: ActivityType::Listening,
             url: None,
+            state: None
         }));
 
         println!(
@@ -192,18 +193,15 @@ impl EventHandler for BotEvents {
         ctx: Context,
         interaction: Interaction,
     ) {
-        match interaction {
-            Interaction::Command(cmd) => {
-                if let Err(why) = match cmd.data.name.as_str() {
-                    "settings" => {
-                        run(&self.pool, &ctx, cmd, &self.guild_cache).await
-                    },
-                    _ => unimplemented(&ctx, cmd).await,
-                } {
-                    println!("cmd error: {why}")
-                }
-            },
-            _ => {},
+        if let Interaction::Command(cmd) = interaction {
+            if let Err(why) = match cmd.data.name.as_str() {
+                "settings" => {
+                    run(&self.pool, &ctx, cmd, &self.guild_cache).await
+                },
+                _ => unimplemented(&ctx, cmd).await,
+            } {
+                println!("cmd error: {why}")
+            }
         }
     }
 
