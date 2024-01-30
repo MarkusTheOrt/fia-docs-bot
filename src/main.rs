@@ -5,6 +5,8 @@ use sqlx::{MySql, MySqlPool, Pool};
 
 use serenity::{client::ClientBuilder, prelude::*};
 
+use anyhow::anyhow;
+
 mod commands;
 mod event_manager;
 mod model;
@@ -17,27 +19,21 @@ pub async fn create_sqlx_client(
     MySqlPool::connect(connection).await
 }
 
-#[tokio::main]
-async fn main() {
-    // I don't really care if the .env file can be loaded or not, its important that we have the
-    // env variable
-    let _ = dotenvy::dotenv();
-
+#[shuttle_runtime::main]
+async fn serenity(
+    #[shuttle_secrets::Secrets] secrets: shuttle_secrets::SecretStore
+) -> shuttle_serenity::ShuttleSerenity {
     let (discord_token, sqlx_connection) =
-        match (std::env::var("DISCORD_TOKEN"), std::env::var("DATABASE_URL")) {
-            (Ok(token), Ok(connection)) => (token, connection),
-            (Err(why), _) | (_, Err(why)) => {
-                println!("Error reading from environment: {why}");
-                return;
-            },
+        match (secrets.get("DISCORD_TOKEN"), secrets.get("DATABASE_URL")) {
+            (Some(token), Some(connection)) => (token, connection),
+            _ => return Err(anyhow!("Secrets not found.").into())
         };
 
     let pool =
         Box::leak(Box::new(match create_sqlx_client(&sqlx_connection).await {
             Ok(pool) => pool,
             Err(why) => {
-                println!("Error connecting to database: {why}");
-                return;
+                return Err(anyhow!(why).into());
             },
         }));
 
@@ -47,18 +43,16 @@ async fn main() {
         thread_lock: AtomicBool::new(false),
     };
 
-    let mut client =
+    let client =
         match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
             .event_handler(event_manager)
             .await
         {
             Ok(client) => client,
             Err(why) => {
-                println!("Error creting client: {why}");
-                return;
+                return Err(anyhow!(why).into());
             },
         };
-    if let Err(why) = client.start().await {
-        println!("Error running client: {why}");
-    }
+
+    Ok(client.into())
 }
