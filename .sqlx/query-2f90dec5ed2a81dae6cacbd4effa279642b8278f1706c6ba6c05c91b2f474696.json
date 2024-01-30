@@ -1,0 +1,124 @@
+{
+  "db_name": "MySQL",
+  "query": "\n    SELECT id, f1_channel, f1_role, f1_threads,\n    f2_channel, f2_role, f2_threads,\n    f3_channel, f3_role, f3_threads FROM guilds\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "NOT_NULL | PRIMARY_KEY | UNSIGNED | NO_DEFAULT_VALUE | NUM",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "f1_channel",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "UNSIGNED | NUM",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "f1_role",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "UNSIGNED | NUM",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "f1_threads",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | NUM",
+          "char_set": 63,
+          "max_size": 1
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "f2_channel",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "UNSIGNED | NUM",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "f2_role",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "UNSIGNED | NUM",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "f2_threads",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | NUM",
+          "char_set": 63,
+          "max_size": 1
+        }
+      },
+      {
+        "ordinal": 7,
+        "name": "f3_channel",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "UNSIGNED | NUM",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 8,
+        "name": "f3_role",
+        "type_info": {
+          "type": "LongLong",
+          "flags": "UNSIGNED | NUM",
+          "char_set": 63,
+          "max_size": 20
+        }
+      },
+      {
+        "ordinal": 9,
+        "name": "f3_threads",
+        "type_info": {
+          "type": "Tiny",
+          "flags": "NOT_NULL | NUM",
+          "char_set": 63,
+          "max_size": 1
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "2f90dec5ed2a81dae6cacbd4effa279642b8278f1706c6ba6c05c91b2f474696"
+}

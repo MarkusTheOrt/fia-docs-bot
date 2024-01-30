@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO threads (id, guild, event, year) VALUES (?, ?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "298e1b437325fa749484afd3ff5ee1c9c2e8d88030d79fcd1067c1b4bf656fe1"
+}

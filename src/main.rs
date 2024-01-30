@@ -26,7 +26,7 @@ async fn serenity(
     let (discord_token, sqlx_connection) =
         match (secrets.get("DISCORD_TOKEN"), secrets.get("DATABASE_URL")) {
             (Some(token), Some(connection)) => (token, connection),
-            _ => return Err(anyhow!("Secrets not found.").into())
+            _ => return Err(anyhow!("Secrets not found.").into()),
         };
 
     let pool =
@@ -43,16 +43,15 @@ async fn serenity(
         thread_lock: AtomicBool::new(false),
     };
 
-    let client =
-        match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
-            .event_handler(event_manager)
-            .await
-        {
-            Ok(client) => client,
-            Err(why) => {
-                return Err(anyhow!(why).into());
-            },
-        };
+    let client = match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
+        .event_handler(event_manager)
+        .await
+    {
+        Ok(client) => client,
+        Err(why) => {
+            return Err(anyhow!(why).into());
+        },
+    };
 
     Ok(client.into())
 }

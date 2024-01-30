@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE guilds\n                   SET f2_channel = ?,\n                   f2_threads = ?,\n                   f2_role = ?\n                   WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "f412b5dc9da0bcdcc0e33d233e32ade7b954b3830f06628975112505f4cead8c"
+}

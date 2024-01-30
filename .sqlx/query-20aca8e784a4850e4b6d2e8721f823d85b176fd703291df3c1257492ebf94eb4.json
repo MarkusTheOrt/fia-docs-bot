@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "UPDATE documents SET notified = 1 WHERE id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "20aca8e784a4850e4b6d2e8721f823d85b176fd703291df3c1257492ebf94eb4"
+}
