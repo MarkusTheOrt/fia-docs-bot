@@ -1,5 +1,5 @@
 use middleware::magick::check_magick;
-use sqlx::{mysql::MySqlPoolOptions};
+use sqlx::mysql::MySqlPoolOptions;
 
 use crate::middleware::{
     magick::{clear_tmp_dir, create_tmp_dir},
@@ -8,9 +8,6 @@ use crate::middleware::{
 mod bodies;
 mod middleware;
 mod model;
-
-
-
 
 #[tokio::main]
 async fn main() {

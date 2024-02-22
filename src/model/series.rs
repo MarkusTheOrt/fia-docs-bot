@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use sqlx::TypeInfo;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Debug, Hash, sqlx::Type)]
+#[derive(
+    Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Debug, Hash, sqlx::Type,
+)]
 pub enum Series {
     #[serde(rename = "f1", alias = "F1")]
     F1,
