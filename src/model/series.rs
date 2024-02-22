@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use sqlx::{error::BoxDynError, Decode, TypeInfo};
+use sqlx::TypeInfo;
 
-#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Debug, Hash)]
+#[derive(Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Debug, Hash, sqlx::Type)]
 pub enum Series {
     #[serde(rename = "f1", alias = "F1")]
     F1,
@@ -29,26 +29,6 @@ impl From<String> for Series {
             "f3" | "F3" => Series::F3,
             _ => Series::F1,
         };
-    }
-}
-
-impl<'r> Decode<'r, sqlx::MySql> for Series {
-    fn decode(
-        value: <sqlx::MySql as sqlx::database::HasValueRef<'r>>::ValueRef
-    ) -> Result<Self, BoxDynError> {
-        let variant = String::decode(value)?;
-
-        let series = match variant.as_str() {
-            "f1" => Self::F1,
-            "f2" => Self::F2,
-            "f3" => Self::F3,
-            _ => {
-                return Err(Box::new(sqlx::error::Error::Decode(
-                    "Error decoing Series".into(),
-                )))
-            },
-        };
-        return Ok(series);
     }
 }
 

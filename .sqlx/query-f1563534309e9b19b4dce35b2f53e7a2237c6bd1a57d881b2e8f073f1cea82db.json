@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO images (document, url, pagenum) VALUES (?, ?, ?)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "f1563534309e9b19b4dce35b2f53e7a2237c6bd1a57d881b2e8f073f1cea82db"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "MySQL",
+  "query": "INSERT INTO events (series, year, name, created, current, new) VALUES (?, ?, ?, ?, 0, 1)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "b28e30fc9c356a5945a7abea99fc5dfe9a22832f732972ea0694488fbbcaec1d"
+}
