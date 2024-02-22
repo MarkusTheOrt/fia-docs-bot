@@ -24,7 +24,7 @@ use std::{
 const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2024-2043";
 const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/championships/formula-2-championship-44";
 const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/championships/fia-formula-3-championship-1012";
-const YEAR: i16 = 2023;
+const YEAR: i16 = 2024;
 
 struct MinDoc {
     pub url: String,
