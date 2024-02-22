@@ -118,13 +118,13 @@ pub async fn runner(pool: &Pool<MySql>) {
     loop {
         let start = Utc::now();
         println!("Scanning for documents.");
-        populate_cache(pool, &mut f1_local_cache, Series::F1).await;
-        populate_cache(pool, &mut f2_local_cache, Series::F2).await;
-        populate_cache(pool, &mut f3_local_cache, Series::F3).await;
+        populate_cache(pool, &mut f1_local_cache, Series::f1).await;
+        populate_cache(pool, &mut f2_local_cache, Series::f2).await;
+        populate_cache(pool, &mut f3_local_cache, Series::f3).await;
 
         #[cfg(not(debug_assertions))]
         {
-            f1_runner(pool, YEAR, F1_DOCS_URL, Series::F1, &mut f1_local_cache)
+            f1_runner(pool, YEAR, F1_DOCS_URL, Series::f1, &mut f1_local_cache)
                 .await;
             //           f1_runner(pool, YEAR, F2_DOCS_URL, Series::F2, &mut f2_local_cache)
             //               .await;
