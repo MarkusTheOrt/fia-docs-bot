@@ -1,0 +1,5 @@
+name = "fia-docs-fetch"
+
+assets = [
+    "config/*"
+]
