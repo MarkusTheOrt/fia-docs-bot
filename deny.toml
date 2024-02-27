@@ -1,18 +1,11 @@
-all-features = false
-
 [advisories]
 db-path = "~/.cargo/advisory-db"
 db-urls = ["https://github.com/rustsec/advisory-db"]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
-ignore = []
+ignore = [
+# not that applicable here, also no fix for now
+"RUSTSEC-2023-0071"]
 
 [licenses]
-unlicensed = "deny"
-copyleft = "deny"
-default = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -46,3 +39,4 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []
+
