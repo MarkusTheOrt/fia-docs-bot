@@ -22,8 +22,8 @@ use std::{
 };
 
 const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2024-2043";
-const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/championships/formula-2-championship-44";
-const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2023-2042/championships/fia-formula-3-championship-1012";
+const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/formula-2-championship-44";
+const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/fia-formula-3-championship-1012";
 const YEAR: i16 = 2024;
 
 struct MinDoc {
@@ -126,10 +126,10 @@ pub async fn runner(pool: &Pool<MySql>) {
         {
             f1_runner(pool, YEAR, F1_DOCS_URL, Series::f1, &mut f1_local_cache)
                 .await;
-            //           f1_runner(pool, YEAR, F2_DOCS_URL, Series::F2, &mut f2_local_cache)
-            //               .await;
-            //           f1_runner(pool, YEAR, F3_DOCS_URL, Series::F3, &mut f3_local_cache)
-            //               .await;
+            f1_runner(pool, YEAR, F2_DOCS_URL, Series::F2, &mut f2_local_cache)
+                .await;
+            f1_runner(pool, YEAR, F3_DOCS_URL, Series::F3, &mut f3_local_cache)
+                .await;
         }
         let runner_time = (Utc::now() - start).to_std().unwrap();
 
