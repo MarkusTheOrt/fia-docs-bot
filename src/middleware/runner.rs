@@ -126,9 +126,9 @@ pub async fn runner(pool: &Pool<MySql>) {
         {
             f1_runner(pool, YEAR, F1_DOCS_URL, Series::f1, &mut f1_local_cache)
                 .await;
-            f1_runner(pool, YEAR, F2_DOCS_URL, Series::F2, &mut f2_local_cache)
+            f1_runner(pool, YEAR, F2_DOCS_URL, Series::f2, &mut f2_local_cache)
                 .await;
-            f1_runner(pool, YEAR, F3_DOCS_URL, Series::F3, &mut f3_local_cache)
+            f1_runner(pool, YEAR, F3_DOCS_URL, Series::f3, &mut f3_local_cache)
                 .await;
         }
         let runner_time = (Utc::now() - start).to_std().unwrap();
