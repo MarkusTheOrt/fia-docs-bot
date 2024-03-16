@@ -10,7 +10,7 @@ use html5ever::{
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
 };
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-use sqlx::{postgres::PgQueryResult, types::chrono::Utc, Pool, Postgres};
+use sqlx::{types::chrono::Utc, Pool, Postgres};
 use std::{
     error::Error, fs::File, num::NonZeroI16, path::PathBuf, str::FromStr,
     time::Duration,
@@ -123,12 +123,30 @@ pub async fn runner(pool: &Pool<Postgres>) {
 
         #[cfg(not(debug_assertions))]
         {
-            f1_runner(pool, YEAR, F1_DOCS_URL, Series::f1, &mut f1_local_cache)
-                .await;
-            f1_runner(pool, YEAR, F2_DOCS_URL, Series::f2, &mut f2_local_cache)
-                .await;
-            f1_runner(pool, YEAR, F3_DOCS_URL, Series::f3, &mut f3_local_cache)
-                .await;
+            f1_runner(
+                pool,
+                YEAR as i16,
+                F1_DOCS_URL,
+                Series::f1,
+                &mut f1_local_cache,
+            )
+            .await;
+            f1_runner(
+                pool,
+                YEAR as i16,
+                F2_DOCS_URL,
+                Series::f2,
+                &mut f2_local_cache,
+            )
+            .await;
+            f1_runner(
+                pool,
+                YEAR as i16,
+                F3_DOCS_URL,
+                Series::f3,
+                &mut f3_local_cache,
+            )
+            .await;
         }
         let runner_time = (Utc::now() - start).to_std().unwrap();
 
