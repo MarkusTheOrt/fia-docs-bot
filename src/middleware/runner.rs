@@ -10,8 +10,7 @@ use html5ever::{
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
 };
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
-use sqlx::types::chrono::Utc;
-use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
+use sqlx::{postgres::PgQueryResult, types::chrono::Utc, Pool, Postgres};
 use std::{
     error::Error, fs::File, num::NonZeroI16, path::PathBuf, str::FromStr,
     time::Duration,
@@ -24,7 +23,7 @@ use std::{
 const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2024-2043";
 const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/formula-2-championship-44";
 const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/fia-formula-3-championship-1012";
-const YEAR: i16 = 2024;
+const YEAR: f64 = 2024.0;
 
 struct MinDoc {
     pub url: String,
@@ -47,7 +46,7 @@ impl Default for LocalCache {
 }
 
 async fn populate_cache(
-    pool: &Pool<MySql>,
+    pool: &Pool<Postgres>,
     cache: &mut LocalCache,
     series: Series,
 ) {
@@ -62,7 +61,7 @@ async fn populate_cache(
         r#"
     SELECT url
     FROM documents
-    WHERE series = ? AND YEAR(created) = ?"#,
+    WHERE series = $1 AND EXTRACT('Year' from created) = $2"#,
         series_str,
         YEAR
     )
@@ -79,14 +78,14 @@ async fn populate_cache(
     let events: Vec<Event> = match sqlx::query_as_unchecked!(
         Event,
         r#"SELECT 
-        `id` as `id?`, 
+        id as "id?", 
         year, 
         series, 
         name, 
         created 
         FROM
-        events where year = ? AND 
-        series = ?"#,
+        events where year = $1 AND 
+        series = $2"#,
         YEAR,
         series_str
     )
@@ -110,7 +109,7 @@ async fn populate_cache(
     );
 }
 
-pub async fn runner(pool: &Pool<MySql>) {
+pub async fn runner(pool: &Pool<Postgres>) {
     let mut f1_local_cache = LocalCache::default();
     let mut f2_local_cache = LocalCache::default();
     let mut f3_local_cache = LocalCache::default();
@@ -142,7 +141,7 @@ pub async fn runner(pool: &Pool<MySql>) {
 }
 
 async fn f1_runner(
-    pool: &Pool<MySql>,
+    pool: &Pool<Postgres>,
     year: i16,
     url: &str,
     series: Series,
@@ -167,7 +166,7 @@ async fn f1_runner(
             Some(db_event) => db_event.clone(),
             None => match sqlx::query_as_unchecked!(
                 Event,
-                "SELECT `id` as `id?`, name, year, created, series FROM events where name = ? AND year = ? AND series = ?",
+                "SELECT id as \"id?\", name, year, created, series FROM events where name = $1 AND year = $2 AND series = $3",
                 ev.title,
                 year,
                 series_str
@@ -197,7 +196,7 @@ async fn f1_runner(
             }
         };
         for (i, doc) in ev.documents.iter().enumerate() {
-            if let Some(_) = cache.documents.iter().find(|f| {
+            if cache.documents.iter().any(|f| {
                 return f.url == *doc.url.as_ref().unwrap();
             }) {
                 continue;
@@ -227,14 +226,17 @@ async fn f1_runner(
                 };
 
             let series_str: String = series.into();
-            let inserted_doc: MySqlQueryResult = match sqlx::query_unchecked!(
-                "INSERT INTO documents (event, url, title, series, mirror) VALUES (?, ?, ?, ?, ?)",
+            struct Id {
+                id: i64,
+            }
+            let inserted_doc: Id = match sqlx::query_as_unchecked!(Id,
+                "INSERT INTO documents (event, url, title, series, mirror) VALUES ($1, $2, $3, $4, $5) RETURNING id",
                     db_event.id.as_ref().unwrap(),
                     url,
                     title,
                     series_str,
                     mirror_url
-                ).execute(pool).await {
+                ).fetch_one(pool).await {
                         Err(why) => {
                             eprintln!("Error inserting doc: {why}");
                             continue;
@@ -278,7 +280,7 @@ async fn f1_runner(
                     "https://fia.ort.dev/{}/{}/{}-{}.jpg",
                     year,
                     urlencoding::encode(ev.title.as_ref().unwrap()),
-                    inserted_doc.last_insert_id(),
+                    inserted_doc.id,
                     j
                 );
                 let now = Utc::now();
@@ -313,16 +315,15 @@ async fn f1_runner(
                             eprintln!("Uploade Error: {why}");
                         },
                         Ok(_) => {
-                            match insert_image(
-                                inserted_doc.last_insert_id(),
-                                j as u32,
+                            if let Err(why) = insert_image(
+                                inserted_doc.id,
+                                j as i32,
                                 url,
                                 pool,
                             )
                             .await
                             {
-                                Err(why) => eprintln!("Error inserting: {why}"),
-                                Ok(_) => {},
+                                eprintln!("Error inserting: {why}")
                             }
                         },
                     },
@@ -331,7 +332,7 @@ async fn f1_runner(
                     },
                 }
             }
-            match mark_doc_done(inserted_doc.last_insert_id(), pool).await {
+            match mark_doc_done(inserted_doc.id, pool).await {
                 Ok(_) => {},
                 Err(why) => {
                     println!("Error marking doc done: {why}");
@@ -345,24 +346,31 @@ async fn f1_runner(
 }
 
 async fn mark_doc_done(
-    doc_id: u64,
-    pool: &Pool<MySql>,
-) -> Result<(), Box<dyn Error>> {
-    sqlx::query!("UPDATE documents SET done = 1 WHERE id = ?", doc_id)
-        .execute(pool)
-        .await?;
+    doc_id: i64,
+    pool: &Pool<Postgres>,
+) -> Result<i64, Box<dyn Error>> {
+    struct Id {
+        id: i64,
+    }
+    let id = sqlx::query_as!(
+        Id,
+        "UPDATE documents SET done = 1 WHERE id = $1 RETURNING id",
+        doc_id
+    )
+    .fetch_one(pool)
+    .await?;
 
-    return Ok(());
+    Ok(id.id)
 }
 
 async fn insert_image(
-    doc_id: u64,
-    page: u32,
+    doc_id: i64,
+    page: i32,
     url: String,
-    pool: &Pool<MySql>,
+    pool: &Pool<Postgres>,
 ) -> Result<(), Box<dyn Error>> {
     sqlx::query!(
-        "INSERT INTO images (document, url, pagenum) VALUES (?, ?, ?)",
+        "INSERT INTO images (document, url, pagenum) VALUES ($1, $2, $3)",
         doc_id,
         url,
         page
@@ -370,7 +378,7 @@ async fn insert_image(
     .execute(pool)
     .await?;
 
-    return Ok(());
+    Ok(())
 }
 
 async fn upload_mirror(
@@ -417,7 +425,7 @@ async fn upload_mirror(
         .await?;
     let url = t.url().to_string();
     t.error_for_status()?;
-    return Ok(url);
+    Ok(url)
 }
 
 async fn download_file(
@@ -432,30 +440,34 @@ async fn download_file(
     let path = PathBuf::from_str(&format!("./tmp/{name}.pdf"))?;
     // ensure we're actually pointing to a legit file.
     path.try_exists()?;
-    return Ok((path, body.to_vec()));
+    Ok((path, body.to_vec()))
 }
 
 async fn insert_event(
-    pool: &Pool<MySql>,
+    pool: &Pool<Postgres>,
     year: i16,
     event: &ParserEvent,
     series: Series,
 ) -> Result<Event, Box<dyn Error>> {
+    struct Id {
+        id: i64,
+    }
+
     let mut db_event = Event {
         id: None,
         series,
-        year: year as u32,
+        year: year as i32,
         name: event.title.as_ref().unwrap().clone(),
         created: Utc::now(),
     };
     let series: String = db_event.series.into();
-    let res: MySqlQueryResult = sqlx::query_unchecked!("INSERT INTO events (series, year, name, created, current, new) VALUES (?, ?, ?, ?, 0, 1)",
+    let res: Id = sqlx::query_as_unchecked!(Id, "INSERT INTO events (series, year, name, created, current, new) VALUES ($1, $2, $3, $4, 0, 1) RETURNING id",
     series,
     db_event.year,
     db_event.name,
-    db_event.created).execute(pool).await?;
-    db_event.id = Some(res.last_insert_id());
-    return Ok(db_event);
+    db_event.created).fetch_one(pool).await?;
+    db_event.id = Some(res.id);
+    Ok(db_event)
 }
 
 async fn get_season(
@@ -479,5 +491,5 @@ async fn get_season(
     let mut tok = Tokenizer::new(sink, opts);
     let _ = tok.feed(&mut input);
     tok.end();
-    return Ok(parser_season);
+    Ok(parser_season)
 }

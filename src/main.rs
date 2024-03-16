@@ -1,5 +1,5 @@
 use middleware::magick::check_magick;
-use sqlx::mysql::MySqlPoolOptions;
+use sqlx::postgres::PgPoolOptions;
 
 use crate::middleware::{
     magick::{clear_tmp_dir, create_tmp_dir},
@@ -28,7 +28,7 @@ async fn main() {
     let database_connect =
         std::env::var("DATABASE_URL").expect("Database URL not set.");
 
-    let database = MySqlPoolOptions::new()
+    let database = PgPoolOptions::new()
         .connect_lazy(&database_connect)
         .expect("Database Connection failed");
 
