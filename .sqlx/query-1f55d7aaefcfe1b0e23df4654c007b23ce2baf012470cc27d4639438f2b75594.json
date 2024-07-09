@@ -1,6 +1,6 @@
 {
   "db_name": "MySQL",
-  "query": "\n    SELECT\n    documents.`id` as `id!`,\n    documents.event as event,\n    documents.title,\n    documents.url,\n    documents.mirror,\n    documents.created,\n    images.url as image,\n    images.pagenum as page,\n    events.name as event_name\n    FROM documents\n    JOIN images ON document = documents.id\n    JOIN events ON events.id = documents.event\n    WHERE documents.series = ? \n    AND notified = 0\n    AND done = 1",
+  "query": "\n    SELECT\n    documents.`id` as `id!`,\n    documents.event as event,\n    documents.title,\n    documents.url,\n    documents.mirror,\n    documents.created,\n    images.url as image,\n    images.pagenum as page,\n    events.name as event_name\n    FROM documents\n    JOIN images ON document = documents.id\n    JOIN events ON events.id = documents.event\n    WHERE documents.series = ?\n    AND notified = 0\n    AND done = 1",
   "describe": {
     "columns": [
       {
@@ -109,5 +109,5 @@
       false
     ]
   },
-  "hash": "c68e8f28df60b272cba3eb81a7394407021b7b09fa05435ba3454c6feb892eb5"
+  "hash": "1f55d7aaefcfe1b0e23df4654c007b23ce2baf012470cc27d4639438f2b75594"
 }
