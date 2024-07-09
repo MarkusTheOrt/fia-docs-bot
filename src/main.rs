@@ -11,7 +11,6 @@ mod commands;
 mod event_manager;
 mod model;
 mod runner;
-mod state;
 
 pub async fn create_sqlx_client(
     connection: &str

@@ -13,6 +13,7 @@ use serenity::builder::CreateMessage;
 use serenity::builder::CreateThread;
 use serenity::prelude::Context;
 use sqlx::{MySql, Pool};
+use tracing::{error, info};
 
 use crate::event_manager::{CachedGuild, GuildCache};
 use crate::model::series::RacingSeries;
@@ -163,7 +164,7 @@ async fn create_threads(
                 .execute(pool)
                 .await
         {
-            println!("Error marking event as done: {why}");
+            error!("Error marking event as done: {why}");
             continue;
         }
         for guild in guilds {
@@ -197,7 +198,7 @@ async fn create_threads(
             {
                 Ok(data) => data,
                 Err(why) => {
-                    println!(
+                    error!(
                         "Error creating thread for guild {}: {why}",
                         guild.id
                     );
@@ -211,7 +212,7 @@ async fn create_threads(
                 year: event.year,
             };
             if let Err(why) = insert_thread(pool, &thread).await {
-                println!("Error adding thread to database: {why}");
+                error!("Error adding thread to database: {why}");
             }
             thread_cache.cache.push(thread);
         }
@@ -239,14 +240,14 @@ async fn run_internal(
     let docs = match unposted_documents(pool, series).await {
         Ok(data) => join_to_doc(data),
         Err(why) => {
-            eprintln!("Error reading unposted docs from db:\n{why}");
+            error!("Error reading unposted docs from db:\n{why}");
             return;
         },
     };
 
     for doc in docs.into_iter() {
         if let Err(why) = mark_doc_done(pool, &doc).await {
-            println!("Error marking doc as done:\n{why}");
+            error!("Error marking doc as done:\n{why}");
             continue;
         }
         for guild in guild_cache.iter() {
@@ -268,14 +269,14 @@ async fn run_internal(
                 {
                     let id = ChannelId::new(thread.id);
                     if let Err(why) = id.send_message(&ctx, msg).await {
-                        println!(
+                        error!(
                             "Error sending msg in thread: [{}] {why}",
                             guild.id
                         );
                         continue;
                     }
                 } else {
-                    println!("thread for guild {} not found!", guild.id);
+                    error!("thread for guild {} not found!", guild.id);
                 }
             } else {
                 let id = ChannelId::new(guild_data.channel.unwrap());
@@ -283,7 +284,7 @@ async fn run_internal(
                     .send_message(&ctx, create_message(&doc, guild_data.role))
                     .await
                 {
-                    println!("Error sending channel embed: {why}");
+                    error!("Error sending channel embed: {why}");
                 }
             }
         }
@@ -313,7 +314,7 @@ async fn populate_guild_cache(
     {
         Ok(data) => data,
         Err(why) => {
-            println!("Error fetching guilds: {why}");
+            error!("Error fetching guilds: {why}");
             return;
         },
     };
@@ -322,7 +323,7 @@ async fn populate_guild_cache(
     for guild in data.into_iter() {
         cache_mut.cache.push(guild.into());
     }
-    println!("guilds cache populated!");
+    error!("guilds cache populated!");
     cache_mut.last_populated = Utc::now();
 }
 
@@ -388,11 +389,11 @@ async fn populate_cache(
     {
         Ok(data) => data,
         Err(why) => {
-            println!("Error populating threads: {why}");
+            error!("Error populating threads: {why}");
             return;
         },
     };
-    println!("poopulated thread cache");
+    info!("populated thread cache");
     cache.last_populated = Utc::now();
     cache.cache = data;
 }
@@ -448,7 +449,7 @@ async fn unposted_documents(
     FROM documents
     JOIN images ON document = documents.id
     JOIN events ON events.id = documents.event
-    WHERE documents.series = ? 
+    WHERE documents.series = ?
     AND notified = 0
     AND done = 1"#,
         Into::<String>::into(racing_series)

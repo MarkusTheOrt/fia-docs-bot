@@ -14,6 +14,7 @@ use serenity::{
 };
 
 use sqlx::MySqlPool;
+use tracing::{error, info};
 
 use crate::runner::AllGuild;
 use crate::{
@@ -103,7 +104,7 @@ impl EventHandler for BotEvents {
         let _ = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
             Err(why) => {
-                println!("error receiving Application Info: {why}");
+                error!("error receiving Application Info: {why}");
                 exit(0x0100);
             },
         };
@@ -111,7 +112,7 @@ impl EventHandler for BotEvents {
         let user = match ctx.http().get_current_user().await {
             Ok(data) => data,
             Err(why) => {
-                println!("error reciving app user: {why}");
+                error!("error reciving app user: {why}");
                 exit(0x0100);
             },
         };
@@ -137,7 +138,7 @@ impl EventHandler for BotEvents {
 
             for fut in join_all(fut).await {
                 if let Err(why) = fut {
-                    println!("error removing command: {why}");
+                    error!("removing command: {why}");
                 }
             }
         }
@@ -146,7 +147,7 @@ impl EventHandler for BotEvents {
             if let Err(why) =
                 ctx.http.create_global_command(&set::register()).await
             {
-                println!("Error registering command: {why}");
+                error!("Error registering command: {why}");
                 exit(0x0100);
             }
         }
@@ -158,7 +159,7 @@ impl EventHandler for BotEvents {
             state: None,
         }));
 
-        println!(
+        info!(
             "Started up {}#{}",
             user.name,
             user.discriminator.expect("Discriminator galore!")
@@ -175,7 +176,7 @@ impl EventHandler for BotEvents {
                 "settings" => run(self.db, &ctx, cmd, &self.guild_cache).await,
                 _ => unimplemented(&ctx, cmd).await,
             } {
-                println!("cmd error: {why}")
+                error!("cmd error: {why}")
             }
         }
     }
@@ -189,7 +190,7 @@ impl EventHandler for BotEvents {
         if let Err(why) =
             insert_new_guild(&guild, self.db, &self.guild_cache).await
         {
-            println!("Error inserting new guild: {why}");
+            error!("Error inserting new guild: {why}");
         }
     }
 
@@ -200,7 +201,7 @@ impl EventHandler for BotEvents {
         new_incomplete: PartialGuild,
     ) {
         if let Err(why) = update_guild_name(&new_incomplete, self.db).await {
-            println!("Error updating guild: {why}");
+            error!("Error updating guild: {why}");
         }
     }
 
@@ -223,7 +224,7 @@ impl EventHandler for BotEvents {
                 .execute(self.db)
                 .await
         {
-            println!("Error removing guild: {why}");
+            error!("Error removing guild: {why}");
         }
     }
 
