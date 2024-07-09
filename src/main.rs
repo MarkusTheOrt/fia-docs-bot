@@ -5,7 +5,7 @@ use sqlx::{MySql, MySqlPool, Pool};
 
 use serenity::{client::ClientBuilder, prelude::*};
 
-use anyhow::anyhow;
+use tracing::{error, info};
 
 mod commands;
 mod event_manager;
@@ -19,23 +19,22 @@ pub async fn create_sqlx_client(
     MySqlPool::connect(connection).await
 }
 
-#[shuttle_runtime::main]
-async fn serenity(
-    #[shuttle_secrets::Secrets] secrets: shuttle_secrets::SecretStore
-) -> shuttle_serenity::ShuttleSerenity {
-    let (discord_token, sqlx_connection) =
-        match (secrets.get("DISCORD_TOKEN"), secrets.get("DATABASE_URL")) {
-            (Some(token), Some(connection)) => (token, connection),
-            _ => return Err(anyhow!("Secrets not found.").into()),
-        };
+#[tokio::main]
+async fn main() {
+    tracing_subscriber::fmt().init();
+    info!("Logging Enabled!");
+    _ = dotenvy::dotenv();
+    let discord_token =
+        std::env::var("DISCORD_TOKEN").expect("Discord token empty");
+    let db_url = std::env::var("DATABASE_URL").expect("Database url empty");
 
-    let pool =
-        Box::leak(Box::new(match create_sqlx_client(&sqlx_connection).await {
-            Ok(pool) => pool,
-            Err(why) => {
-                return Err(anyhow!(why).into());
-            },
-        }));
+    let pool = Box::leak(Box::new(match create_sqlx_client(&db_url).await {
+        Ok(pool) => pool,
+        Err(why) => {
+            error!("Error creating SQL client: {why}");
+            return;
+        },
+    }));
 
     let event_manager = BotEvents {
         db: pool,
@@ -43,15 +42,18 @@ async fn serenity(
         thread_lock: AtomicBool::new(false),
     };
 
-    let client = match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
-        .event_handler(event_manager)
-        .await
-    {
-        Ok(client) => client,
-        Err(why) => {
-            return Err(anyhow!(why).into());
-        },
-    };
-
-    Ok(client.into())
+    let mut client =
+        match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
+            .event_handler(event_manager)
+            .await
+        {
+            Ok(client) => client,
+            Err(why) => {
+                error!("Error creating Discord client: {why}");
+                return;
+            },
+        };
+    if let Err(why) = client.start_autosharded().await {
+        error!("Error starting Discord client: {why}");
+    }
 }

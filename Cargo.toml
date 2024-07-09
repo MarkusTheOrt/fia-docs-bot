@@ -10,12 +10,12 @@ license = "MIT OR Apache-2.0"
 anyhow = "1.0.80"
 chrono = { version = "0.4.34", features = ["serde"] }
 dotenvy = "0.15.7"
-reqwest = "0.11.24"
+reqwest = "0.12.4"
 serde = { version = "1.0.197", features = ["derive"] }
 serenity = { version = "0.12.0" }
-shuttle-runtime = "0.39.0"
-shuttle-secrets = "0.39.0"
-shuttle-serenity = "0.39.0"
+shuttle-runtime = "0.44.0"
+shuttle-serenity = "0.44.0"
 sqlx = { version = "0.7.3", features = ["mysql", "chrono", "runtime-tokio-native-tls"] }
 tokio = { version = "1.36.0", features = ["full"] }
 tracing = { version = "0.1.40", features = ["log"] }
+tracing-subscriber = "0.3.18"
