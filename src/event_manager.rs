@@ -101,6 +101,8 @@ impl EventHandler for BotEvents {
         ctx: Context,
         _guilds: Vec<GuildId>,
     ) {
+
+        info!("Starting up!");
         let _ = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
             Err(why) => {
