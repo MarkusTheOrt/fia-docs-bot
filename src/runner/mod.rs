@@ -11,7 +11,7 @@ use serenity::builder::CreateEmbed;
 use serenity::builder::CreateEmbedAuthor;
 use serenity::builder::CreateMessage;
 use serenity::builder::CreateThread;
-use serenity::prelude::Context;
+use serenity::prelude::*;
 use sqlx::{MySql, Pool};
 use tracing::{error, info};
 
@@ -323,7 +323,7 @@ async fn populate_guild_cache(
     for guild in data.into_iter() {
         cache_mut.cache.push(guild.into());
     }
-    error!("guilds cache populated!");
+    info!("guilds cache populated!");
     cache_mut.last_populated = Utc::now();
 }
 
