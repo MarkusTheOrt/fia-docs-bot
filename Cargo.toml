@@ -12,7 +12,7 @@ chrono = { version = "0.4.34", features = ["serde"] }
 dotenvy = "0.15.7"
 reqwest = "0.12.4"
 serde = { version = "1.0.197", features = ["derive"] }
-serenity = { git = "https://github.com/serenity-rs/serenity", version = "0.12.2" }
+serenity = { git = "https://github.com/serenity-rs/serenity", version = "0.12.2", features = ["cache"], rev = "be4193a60ea1b7cf60b890a4f1491ab63f50945c" }
 sqlx = { version = "0.7.3", features = [
     "mysql",
     "chrono",

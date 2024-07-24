@@ -96,12 +96,9 @@ pub struct BotEvents {
 
 #[async_trait]
 impl EventHandler for BotEvents {
-    async fn cache_ready(
-        &self,
-        ctx: Context,
-        _guilds: Vec<GuildId>,
-    ) {
 
+    async fn ready(&self, ctx: Context, _ready: serenity::all::Ready) {
+        info!("Ready called");
         info!("Starting up!");
         let _ = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
@@ -166,6 +163,14 @@ impl EventHandler for BotEvents {
             user.name,
             user.discriminator.expect("Discriminator galore!")
         );
+    }
+
+    async fn cache_ready(
+        &self,
+        ctx: Context,
+        _guilds: Vec<GuildId>,
+    ) {
+
     }
 
     async fn interaction_create(

@@ -1,9 +1,9 @@
-use std::sync::{atomic::AtomicBool, Arc, Mutex};
+use std::{sync::{atomic::AtomicBool, Arc, Mutex}, time::Duration};
 
 use event_manager::{BotEvents, GuildCache};
 use sqlx::{MySql, MySqlPool, Pool};
 
-use serenity::{client::ClientBuilder, prelude::*};
+use serenity::{all::Settings, client::ClientBuilder, prelude::*};
 
 use tracing::{error, info};
 
@@ -40,10 +40,14 @@ async fn main() {
         guild_cache: Arc::new(Mutex::new(GuildCache::default())),
         thread_lock: AtomicBool::new(false),
     };
-
+    let mut settings = Settings::default();
+    settings.cache_users = false;
+    settings.cache_channels = true;
+    settings.cache_guilds = true;
     let mut client =
         match ClientBuilder::new(discord_token, GatewayIntents::GUILDS)
             .event_handler(event_manager)
+            .cache_settings(settings)
             .await
         {
             Ok(client) => client,
@@ -52,7 +56,7 @@ async fn main() {
                 return;
             },
         };
-    if let Err(why) = client.start_autosharded().await {
+    if let Err(why) = client.start().await {
         error!("Error starting Discord client: {why}");
     }
 }
