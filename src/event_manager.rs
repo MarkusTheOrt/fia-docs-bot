@@ -96,8 +96,11 @@ pub struct BotEvents {
 
 #[async_trait]
 impl EventHandler for BotEvents {
-
-    async fn ready(&self, ctx: Context, _ready: serenity::all::Ready) {
+    async fn ready(
+        &self,
+        ctx: Context,
+        _ready: serenity::all::Ready,
+    ) {
         info!("Ready called");
         info!("Starting up!");
         let _ = match ctx.http.get_current_application_info().await {
@@ -119,10 +122,10 @@ impl EventHandler for BotEvents {
         if !self.thread_lock.load(Ordering::Relaxed) {
             self.thread_lock.swap(true, Ordering::Relaxed);
             let thread_ctx = ctx.clone();
-            let thread_db_pool = self.db;
+            let mut thread_db_pool = self.db.acquire().await.unwrap();
             let thread_cache = self.guild_cache.clone();
             std::thread::spawn(move || {
-                runner(thread_ctx, thread_db_pool, thread_cache);
+                runner(thread_ctx, thread_db_pool.as_mut(), thread_cache);
             });
         }
 
@@ -167,10 +170,9 @@ impl EventHandler for BotEvents {
 
     async fn cache_ready(
         &self,
-        ctx: Context,
+        _ctx: Context,
         _guilds: Vec<GuildId>,
     ) {
-
     }
 
     async fn interaction_create(

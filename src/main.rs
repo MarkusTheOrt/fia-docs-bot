@@ -1,4 +1,4 @@
-use std::{sync::{atomic::AtomicBool, Arc, Mutex}, time::Duration};
+use std::sync::{atomic::AtomicBool, Arc, Mutex};
 
 use event_manager::{BotEvents, GuildCache};
 use sqlx::{MySql, MySqlPool, Pool};

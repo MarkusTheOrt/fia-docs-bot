@@ -5,6 +5,7 @@ use std::time::{Duration, UNIX_EPOCH};
 use chrono::DateTime;
 use chrono::Datelike;
 use chrono::Utc;
+use f1_bot_types::Series;
 use serenity::all::ChannelType::PublicThread;
 use serenity::all::{AutoArchiveDuration, ChannelId};
 use serenity::builder::CreateEmbed;
@@ -12,11 +13,10 @@ use serenity::builder::CreateEmbedAuthor;
 use serenity::builder::CreateMessage;
 use serenity::builder::CreateThread;
 use serenity::prelude::*;
-use sqlx::{MySql, Pool};
+use sqlx::MySqlConnection;
 use tracing::{error, info};
 
 use crate::event_manager::{CachedGuild, GuildCache};
-use crate::model::series::RacingSeries;
 
 #[derive(Debug, Clone)]
 pub struct JoinImage {
@@ -117,26 +117,44 @@ impl Default for ThreadCache {
 #[tokio::main]
 pub async fn runner(
     ctx: Context,
-    pool: &Pool<MySql>,
+    db_conn: &mut MySqlConnection,
     guild_cache: Arc<Mutex<GuildCache>>,
 ) {
     let mut thread_cache = ThreadCache::default();
     loop {
-        populate_cache(pool, &mut thread_cache).await;
-        populate_guild_cache(pool, &guild_cache).await;
+        populate_cache(db_conn, &mut thread_cache).await;
+        populate_guild_cache(db_conn, &guild_cache).await;
         std::thread::sleep(Duration::from_secs(5));
         let guilds = {
             let cache = guild_cache.lock().unwrap();
             cache.cache.clone()
         };
 
-        create_threads(pool, &guilds, &ctx, &mut thread_cache).await;
-        run_internal(pool, RacingSeries::F1, &guilds, &ctx, &mut thread_cache)
-            .await;
-        run_internal(pool, RacingSeries::F2, &guilds, &ctx, &mut thread_cache)
-            .await;
-        run_internal(pool, RacingSeries::F3, &guilds, &ctx, &mut thread_cache)
-            .await;
+        create_threads(db_conn, &guilds, &ctx, &mut thread_cache).await;
+        run_internal(
+            db_conn,
+            Series::F1,
+            &guilds,
+            &ctx,
+            &mut thread_cache,
+        )
+        .await;
+        run_internal(
+            db_conn,
+            Series::F2,
+            &guilds,
+            &ctx,
+            &mut thread_cache,
+        )
+        .await;
+        run_internal(
+            db_conn,
+            Series::F3,
+            &guilds,
+            &ctx,
+            &mut thread_cache,
+        )
+        .await;
     }
 }
 
@@ -145,44 +163,45 @@ pub struct NewEvent {
     pub id: u64,
     pub name: String,
     pub year: i32,
-    pub series: RacingSeries,
+    pub series: i8,
 }
 
 async fn create_threads(
-    pool: &Pool<MySql>,
+    db_conn: &mut MySqlConnection,
     guilds: &Vec<CachedGuild>,
     ctx: &Context,
     thread_cache: &mut ThreadCache,
 ) {
-    let events = match new_events(pool).await {
+    let events = match new_events(db_conn).await {
         Ok(data) => data,
         Err(_) => return,
     };
     for event in events.into_iter() {
         if let Err(why) =
             sqlx::query!("UPDATE events SET new = 0 WHERE id = ?", event.id)
-                .execute(pool)
+                .execute(&mut *db_conn)
                 .await
         {
             error!("Error marking event as done: {why}");
             continue;
         }
         for guild in guilds {
-            let guild_data = match event.series {
-                RacingSeries::F1 => &guild.f1,
-                RacingSeries::F2 => &guild.f2,
-                RacingSeries::F3 => &guild.f3,
+            let guild_data = match Series::from(event.series) {
+                Series::F1 => &guild.f1,
+                Series::F2 => &guild.f2,
+                Series::F3 => &guild.f3,
+                Series::F1Academy => panic!("F1A Not Supported"),
             };
 
-            if guild_data.channel.is_none() {
+            let Some(guild_channel) = guild_data.channel else {
                 continue;
-            }
+            };
 
             if !guild_data.use_threads {
                 continue;
             }
 
-            let channel = ChannelId::new(guild_data.channel.unwrap());
+            let channel = ChannelId::new(guild_channel);
             let thread = match channel
                 .create_thread(
                     ctx,
@@ -211,7 +230,7 @@ async fn create_threads(
                 event: event.id,
                 year: event.year,
             };
-            if let Err(why) = insert_thread(pool, &thread).await {
+            if let Err(why) = insert_thread(db_conn, &thread).await {
                 error!("Error adding thread to database: {why}");
             }
             thread_cache.cache.push(thread);
@@ -219,25 +238,27 @@ async fn create_threads(
     }
 }
 
-async fn new_events(pool: &Pool<MySql>) -> Result<Vec<NewEvent>, sqlx::Error> {
+async fn new_events(
+    db_conn: &mut MySqlConnection
+) -> Result<Vec<NewEvent>, sqlx::Error> {
     sqlx::query_as_unchecked!(
         NewEvent,
         r#"
     SELECT `id` as `id!`, name, year, series FROM events WHERE new = 1
     "#
     )
-    .fetch_all(pool)
+    .fetch_all(db_conn)
     .await
 }
 
 async fn run_internal(
-    pool: &Pool<MySql>,
-    series: RacingSeries,
+    db_conn: &mut MySqlConnection,
+    series: Series,
     guild_cache: &[CachedGuild],
     ctx: &Context,
     thread_cache: &mut ThreadCache,
 ) {
-    let docs = match unposted_documents(pool, series).await {
+    let docs = match unposted_documents(db_conn, series).await {
         Ok(data) => join_to_doc(data),
         Err(why) => {
             error!("Error reading unposted docs from db:\n{why}");
@@ -246,15 +267,16 @@ async fn run_internal(
     };
 
     for doc in docs.into_iter() {
-        if let Err(why) = mark_doc_done(pool, &doc).await {
+        if let Err(why) = mark_doc_done(db_conn, &doc).await {
             error!("Error marking doc as done:\n{why}");
             continue;
         }
         for guild in guild_cache.iter() {
             let guild_data = match series {
-                RacingSeries::F1 => &guild.f1,
-                RacingSeries::F2 => &guild.f2,
-                RacingSeries::F3 => &guild.f3,
+                Series::F1 => &guild.f1,
+                Series::F2 => &guild.f2,
+                Series::F3 => &guild.f3,
+                _ => panic!("F1Academy Not Supported!"),
             };
             // skip not-set up guilds.
             if guild_data.channel.is_none() {
@@ -292,7 +314,7 @@ async fn run_internal(
 }
 
 async fn populate_guild_cache(
-    pool: &Pool<MySql>,
+    db_conn: &mut MySqlConnection,
     guild_cache: &Arc<Mutex<GuildCache>>,
 ) {
     {
@@ -309,7 +331,7 @@ async fn populate_guild_cache(
     f3_channel, f3_role, f3_threads FROM guilds
     "#
     )
-    .fetch_all(pool)
+    .fetch_all(db_conn)
     .await
     {
         Ok(data) => data,
@@ -328,7 +350,7 @@ async fn populate_guild_cache(
 }
 
 async fn insert_thread(
-    pool: &Pool<MySql>,
+    db_conn: &mut MySqlConnection,
     thread: &MinThread,
 ) -> Result<(), sqlx::Error> {
     sqlx::query!(
@@ -338,18 +360,18 @@ async fn insert_thread(
         thread.event,
         thread.year
     )
-    .execute(pool)
+    .execute(db_conn)
     .await?;
     Ok(())
 }
 
 async fn mark_doc_done(
-    pool: &Pool<MySql>,
+    db_conn: &mut MySqlConnection,
     doc: &ImageDoc,
 ) -> Result<(), Box<dyn Error>> {
     let t =
         sqlx::query!("UPDATE documents SET notified = 1 WHERE id = ?", doc.id)
-            .execute(pool)
+            .execute(db_conn)
             .await?;
     if t.rows_affected() == 0 {
         return Err(String::from("Rows affected = 0").into());
@@ -370,7 +392,7 @@ fn create_message(
 }
 
 async fn populate_cache(
-    pool: &Pool<MySql>,
+    db_conn: &mut MySqlConnection,
     cache: &mut ThreadCache,
 ) {
     if (Utc::now() - cache.last_populated).num_days() < 1 {
@@ -384,7 +406,7 @@ async fn populate_cache(
     "#,
         year
     )
-    .fetch_all(pool)
+    .fetch_all(db_conn)
     .await
     {
         Ok(data) => data,
@@ -430,8 +452,8 @@ fn join_to_doc(join_data: Vec<JoinImage>) -> Vec<ImageDoc> {
 }
 
 async fn unposted_documents(
-    pool: &Pool<MySql>,
-    racing_series: RacingSeries,
+    db_conn: &mut MySqlConnection,
+    racing_series: Series,
 ) -> Result<Vec<JoinImage>, sqlx::Error> {
     sqlx::query_as_unchecked!(
         JoinImage,
@@ -452,8 +474,8 @@ async fn unposted_documents(
     WHERE documents.series = ?
     AND notified = 0
     AND done = 1"#,
-        Into::<String>::into(racing_series)
+        racing_series.to_string()
     )
-    .fetch_all(pool)
+    .fetch_all(db_conn)
     .await
 }
