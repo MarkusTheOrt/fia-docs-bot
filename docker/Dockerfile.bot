@@ -1,0 +1,18 @@
+FROM rust:alpine AS builder
+WORKDIR /app
+
+COPY . ./
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static gcc
+RUN cargo build --release
+
+FROM rust:alpine
+
+WORKDIR /app
+
+COPY --from=builder /app/target/release/fia-docs-bot /app/fia-docs-bot
+
+RUN chmod +x /app/fia-docs-bot
+
+
+CMD /app/fia-docs-bot
+

@@ -13,7 +13,7 @@ pub async fn unimplemented(
     let resp = CreateInteractionResponse::Message(
         CreateInteractionResponseMessage::new()
             .ephemeral(true)
-            .content("Not implemented!"),
+            .content("Bot is currently in Maintenance Mode!"),
     );
     command.create_response(ctx, resp).await
 }

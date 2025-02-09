@@ -3,3 +3,6 @@
 .env
 Secrets.toml
 Secrets.dev.toml
+local.db
+local.db*
+/data

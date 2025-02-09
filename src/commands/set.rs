@@ -15,7 +15,8 @@ use serenity::{
     model::permissions::Permissions,
     prelude::Context,
 };
-use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
+
+use libsql::{params, Connection};
 
 use crate::event_manager::GuildCache;
 
@@ -33,7 +34,7 @@ pub fn register() -> CreateCommand {
 fn create_option(series: Series) -> CreateCommandOption {
     CreateCommandOption::new(
         SubCommand,
-        series.to_string(),
+        series.to_string().to_lowercase(),
         "Settings for the series",
     )
     .add_sub_option(create_thread_option())
@@ -72,7 +73,7 @@ fn error_embed(
 }
 
 pub async fn run(
-    pool: &Pool<MySql>,
+    pool: &Connection,
     ctx: &Context,
     cmd: CommandInteraction,
     cache: &Arc<Mutex<GuildCache>>,
@@ -147,7 +148,7 @@ pub async fn run(
 
 async fn series_command<'a>(
     series: Series,
-    pool: &Pool<MySql>,
+    pool: &Connection,
     cmd: &CommandInteraction,
     options: Vec<ResolvedOption<'_>>,
     cache: &Arc<Mutex<GuildCache>>,
@@ -212,58 +213,32 @@ async fn series_command<'a>(
 }
 
 async fn series_query(
-    pool: &Pool<MySql>,
+    pool: &Connection,
     series: Series,
     channel: Option<u64>,
     threads: bool,
     role: Option<u64>,
     guild: u64,
-) -> Result<MySqlQueryResult, sqlx::Error> {
+) -> Result<u64, libsql::Error> {
+    let channel = channel.map(|f| f.to_string());
+    let role = role.map(|f| f.to_string());
+    let threads = if threads {
+        1
+    } else {
+        0
+    };
     match series {
         Series::F1 => {
-            sqlx::query!(
-                r#"UPDATE guilds
-                   SET f1_channel = ?,
-                   f1_threads = ?,
-                   f1_role = ?
-                   WHERE id = ?"#,
-                channel,
-                threads,
-                role,
-                guild
-            )
-            .execute(pool)
-            .await
+            pool.execute("UPDATE guilds SET f1_channel = ?, f1_threads = ?, f1_role = ? where discord_id = ?",
+            params![channel, threads, role, guild]).await
         },
         Series::F2 => {
-            sqlx::query!(
-                r#"UPDATE guilds
-                   SET f2_channel = ?,
-                   f2_threads = ?,
-                   f2_role = ?
-                   WHERE id = ?"#,
-                channel,
-                threads,
-                role,
-                guild
-            )
-            .execute(pool)
-            .await
+            pool.execute("UPDATE guilds SET f2_channel = ?, f2_threads = ?, f2_role = ? where discord_id = ?",
+            params![channel, threads, role, guild]).await
         },
         Series::F3 => {
-            sqlx::query!(
-                r#"UPDATE guilds
-                   SET f3_channel = ?,
-                   f3_threads = ?,
-                   f3_role = ?
-                   WHERE id = ?"#,
-                channel,
-                threads,
-                role,
-                guild
-            )
-            .execute(pool)
-            .await
+            pool.execute("UPDATE guilds SET f3_channel = ?, f3_threads = ?, f3_role = ? where discord_id = ?",
+            params![channel, threads, role, guild]).await
         },
         _ => panic!("F1Academy not Supported!")
     }

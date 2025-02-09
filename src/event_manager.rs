@@ -1,8 +1,9 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::Mutex;
 use std::{process::exit, sync::Arc, time::UNIX_EPOCH};
 
 use chrono::{DateTime, Utc};
+use libsql::params;
 use serenity::futures::future::join_all;
 use serenity::{
     all::{
@@ -13,18 +14,13 @@ use serenity::{
     prelude::*,
 };
 
-use sqlx::MySqlPool;
 use tracing::{error, info};
 
-use crate::runner::AllGuild;
-use crate::{
-    commands::{
-        set::{self, run},
-        unimplemented,
-    },
-    model::guild::{insert_new_guild, update_guild_name},
-    runner::runner,
+use crate::commands::{
+    set::{self, run},
+    unimplemented,
 };
+use crate::runner::AllGuild;
 
 #[derive(Clone)]
 pub struct SeriesSettings {
@@ -89,9 +85,9 @@ impl Default for GuildCache {
 }
 
 pub struct BotEvents {
-    pub db: &'static MySqlPool,
     pub guild_cache: Arc<Mutex<GuildCache>>,
     pub thread_lock: AtomicBool,
+    pub conn: &'static libsql::Connection,
 }
 
 #[async_trait]
@@ -118,16 +114,6 @@ impl EventHandler for BotEvents {
                 exit(0x0100);
             },
         };
-
-        if !self.thread_lock.load(Ordering::Relaxed) {
-            self.thread_lock.swap(true, Ordering::Relaxed);
-            let thread_ctx = ctx.clone();
-            let mut thread_db_pool = self.db.acquire().await.unwrap();
-            let thread_cache = self.guild_cache.clone();
-            std::thread::spawn(move || {
-                runner(thread_ctx, thread_db_pool.as_mut(), thread_cache);
-            });
-        }
 
         {
             let mut fut = vec![];
@@ -173,6 +159,7 @@ impl EventHandler for BotEvents {
         _ctx: Context,
         _guilds: Vec<GuildId>,
     ) {
+        info!("Cache Ready!");
     }
 
     async fn interaction_create(
@@ -182,7 +169,7 @@ impl EventHandler for BotEvents {
     ) {
         if let Interaction::Command(cmd) = interaction {
             if let Err(why) = match cmd.data.name.as_str() {
-                "settings" => run(self.db, &ctx, cmd, &self.guild_cache).await,
+                "settings" => run(self.conn, &ctx, cmd, &self.guild_cache).await,
                 _ => unimplemented(&ctx, cmd).await,
             } {
                 error!("cmd error: {why}")
@@ -196,10 +183,23 @@ impl EventHandler for BotEvents {
         guild: Guild,
         _is_new: Option<bool>,
     ) {
-        if let Err(why) =
-            insert_new_guild(&guild, self.db, &self.guild_cache).await
+        if let Err(why) = self
+            .conn
+            .execute(
+                r#"INSERT INTO guilds (discord_id, name, date_joined) 
+        VALUES (?, ?, ?) 
+        ON CONFLICT(discord_id) 
+        DO UPDATE SET 
+        name = excluded.name"#,
+                params![
+                    guild.id.to_string(),
+                    guild.name.clone(),
+                    guild.joined_at.to_utc().to_rfc3339(),
+                ],
+            )
+            .await
         {
-            error!("Error inserting new guild: {why}");
+            error!("{why}");
         }
     }
 
@@ -209,7 +209,14 @@ impl EventHandler for BotEvents {
         _old: Option<Guild>,
         new_incomplete: PartialGuild,
     ) {
-        if let Err(why) = update_guild_name(&new_incomplete, self.db).await {
+        if let Err(why) = self
+            .conn
+            .execute(
+                r#"UPDATE guilds SET name = ? WHERE discord_id = ?"#,
+                params![new_incomplete.name, new_incomplete.id.to_string()],
+            )
+            .await
+        {
             error!("Error updating guild: {why}");
         }
     }
@@ -228,13 +235,13 @@ impl EventHandler for BotEvents {
             Some(guild) => guild,
             None => return,
         };
-        if let Err(why) =
-            sqlx::query!("DELETE FROM guilds WHERE id = ?", guild.id.get())
-                .execute(self.db)
-                .await
-        {
-            error!("Error removing guild: {why}");
-        }
+        //if let Err(why) =
+        //    sqlx::query!("DELETE FROM guilds WHERE id = ?", guild.id.get())
+        //        .execute(self.db)
+        //        .await
+        //{
+        //    error!("Error removing guild: {why}");
+        //}
     }
 
     async fn resume(
