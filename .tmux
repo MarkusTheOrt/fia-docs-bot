@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Name of the tmux session
-SESSION_NAME="fia-docs-bot"
+SESSION_NAME="$(basename "$PWD")"
 
 # Check if the session already exists
 tmux has-session -t $SESSION_NAME 2>/dev/null
