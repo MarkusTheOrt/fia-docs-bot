@@ -12,8 +12,6 @@ pub fn register() -> CreateCommand {
         .default_member_permissions(Permissions::ADMINISTRATOR)
 }
 
-
-
 pub async fn run(
     ctx: &Context,
     cmd: CommandInteraction,

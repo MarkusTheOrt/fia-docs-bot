@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-
 #[derive(Serialize, Deserialize)]
 pub struct DbGuild {
     pub id: u64,
@@ -49,4 +48,3 @@ pub struct DbGuild {
 //    .execute(pool)
 //    .await
 //}
-

@@ -5,8 +5,11 @@ use std::{
 
 use event_manager::BotEvents;
 
-use runner::fetch_unallowed_events;
-use serenity::{all::{Settings, ShardManager}, client::ClientBuilder, prelude::*};
+use serenity::{
+    all::{Settings, ShardManager},
+    client::ClientBuilder,
+    prelude::*,
+};
 
 use tracing::{error, info};
 
@@ -14,13 +17,14 @@ mod commands;
 mod event_manager;
 mod model;
 mod runner;
+mod error;
+mod database;
 
 pub struct ShardManagerBox;
 
 impl TypeMapKey for ShardManagerBox {
     type Value = Arc<ShardManager>;
 }
-
 
 #[tokio::main]
 async fn main() {
@@ -39,19 +43,11 @@ async fn main() {
     .build()
     .await
     .unwrap();
-    
+
     db_client.sync().await.unwrap();
 
     let conn = db_client.connect().unwrap();
-    
-    let events = fetch_unallowed_events(&conn).await.unwrap();
 
-    info!("Event?");
-
-    for event in events {
-        info!("{event:#?}");
-    }
-    
     let event_manager = BotEvents {
         thread_lock: AtomicBool::new(false),
         conn: Box::leak(Box::new(conn)),
@@ -73,11 +69,11 @@ async fn main() {
                 return;
             },
         };
-        
-        {
-            let mut data = client.data.write().await;
-            data.insert::<ShardManagerBox>(client.shard_manager.clone());
-        }
+
+    {
+        let mut data = client.data.write().await;
+        data.insert::<ShardManagerBox>(client.shard_manager.clone());
+    }
 
     let shard_manager = client.shard_manager.clone();
     tokio::spawn(async move {

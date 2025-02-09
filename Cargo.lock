@@ -554,9 +554,10 @@ dependencies = [
 [[package]]
 name = "f1-bot-types"
 version = "0.1.0"
-source = "git+https://codeberg.org/MTO/f1-bot-types#7eddef0170cbdec5a51351a2607fb2c527882a49"
+source = "git+https://codeberg.org/MTO/f1-bot-types#ca56c8fb8a90db16869338921b79b1d54b699acc"
 dependencies = [
  "chrono",
+ "libsql",
  "notifbot-macros",
  "serde",
 ]
@@ -594,6 +595,7 @@ dependencies = [
  "dotenvy",
  "f1-bot-types",
  "libsql",
+ "notifbot-macros",
  "serde",
  "serenity",
  "tokio",
@@ -1446,7 +1448,7 @@ dependencies = [
 [[package]]
 name = "notifbot-macros"
 version = "0.1.0"
-source = "git+https://codeberg.org/MTO/f1-bot-macros#f989d4a759abad7eb8fda0971c0e463bb3636a67"
+source = "git+https://codeberg.org/MTO/f1-bot-macros#371ac74f35c99a389d7f12145b86a239c93a4aa5"
 dependencies = [
  "quote",
  "syn 2.0.98",

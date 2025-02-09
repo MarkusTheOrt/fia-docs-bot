@@ -1,4 +1,3 @@
-
 use f1_bot_types::Series;
 use serenity::{
     all::{
@@ -16,7 +15,6 @@ use serenity::{
 };
 
 use libsql::{params, Connection};
-
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("settings")
@@ -95,15 +93,9 @@ pub async fn run(
     if let Some(command) = subcommand {
         if let ResolvedValue::SubCommand(options) = command.value {
             let rv = match command.name {
-                "f1" => {
-                    series_command(Series::F1, pool, &cmd, options ).await
-                },
-                "f2" => {
-                    series_command(Series::F2, pool, &cmd, options ).await
-                },
-                "f3" => {
-                    series_command(Series::F3, pool, &cmd, options ).await
-                },
+                "f1" => series_command(Series::F1, pool, &cmd, options).await,
+                "f2" => series_command(Series::F2, pool, &cmd, options).await,
+                "f3" => series_command(Series::F3, pool, &cmd, options).await,
                 _ => {
                     let builder = CreateInteractionResponseFollowup::new()
                         .ephemeral(true)

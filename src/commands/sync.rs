@@ -1,7 +1,7 @@
 use serenity::{
     all::{
-        CacheHttp, CommandInteraction, CreateCommand,
-        EditInteractionResponse, Permissions,
+        CacheHttp, CommandInteraction, CreateCommand, EditInteractionResponse,
+        Permissions,
     },
     futures::future::join_all,
 };

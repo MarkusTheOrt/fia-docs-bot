@@ -1,21 +1,122 @@
-use f1_bot_types::Event;
-use libsql::Connection;
+use std::{error::Error, time::Duration};
+
+use chrono::{DateTime, Utc};
+use f1_bot_types::{Event, EventStatus};
+use libsql::{de, params, Connection};
+use notifbot_macros::notifbot_enum;
+use serenity::all::{
+    ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
+    CreateMessage,
+};
 use tracing::{error, info};
 
-pub async fn fetch_unallowed_events(
-    db_conn: &Connection
-) -> Result<Vec<Event>, Box<dyn std::error::Error>> {
-    let mut stmt = db_conn.prepare("SELECT * FROM events WHERE status = \"NotAllowed\" AND year = strftime('%Y', current_timestamp)").await?;
-    let mut data = stmt.query(()).await?;
-    let mut return_value = Vec::new();
-    while let Ok(Some(data)) = data.next().await {
-        info!("{data:#?}");
-        match libsql::de::from_row::<Event>(&data) {
-            Ok(event) => return_value.push(event),
-            Err(why) => error!("{why:#?}")
+use crate::database::fetch_events_by_status;
+
+const REQUEST_CHANNEL_ID: u64 = 1338180150906327120;
+
+notifbot_enum!(AllowRequestStatus {
+    Open,
+    Allowed,
+    Denied
+});
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct AllowRequest {
+    id: i64,
+    event_id: u64,
+    response: AllowRequestStatus,
+    created_at: DateTime<Utc>,
+}
+
+pub async fn has_allow_request(
+    db_conn: &Connection,
+    event: &Event,
+) -> Result<Option<AllowRequest>, crate::error::Error> {
+    let mut rows = db_conn
+        .query("SELECT * FROM allow_requests WHERE event_id = ?", [event.id])
+        .await?;
+    Ok(match rows.next().await?.map(|f| de::from_row::<AllowRequest>(&f)) {
+        Some(r) => Some(r?),
+        None => None,
+    })
+}
+
+pub async fn create_allow_request(
+    db_conn: &Connection,
+    event: &Event,
+    ctx: &Context,
+) -> Result<AllowRequest, crate::error::Error> {
+    db_conn
+        .execute(
+            "INSERT INTO allow_requests (event_id, response) VALUES (?, ?)",
+            params![event.id, AllowRequestStatus::Open.to_str()],
+        )
+        .await?;
+    let row_id = db_conn.last_insert_rowid();
+    create_discord_allow_request(ctx, event, row_id).await?;
+    Ok(AllowRequest {
+        id: row_id,
+        event_id: event.id,
+        response: AllowRequestStatus::Open,
+        created_at: Utc::now(),
+    })
+}
+
+pub async fn create_discord_allow_request(
+    ctx: &Context,
+    event: &Event,
+    request_id: i64,
+) -> Result<(), crate::error::Error> {
+    ChannelId::new(REQUEST_CHANNEL_ID)
+        .send_message(
+            ctx,
+            CreateMessage::new()
+                .embed(
+                    CreateEmbed::new().title("New Event Found!").description(
+                        format!(
+                            "## {} {} {}\n\nPlease allow or deny.",
+                            event.year, event.series, event.title,
+                        ),
+                    ),
+                )
+                .components(vec![CreateActionRow::Buttons(vec![
+                    CreateButton::new(format!("allow-{request_id}"))
+                        .label("Allow")
+                        .style(serenity::all::ButtonStyle::Success),
+                    CreateButton::new(format!("deny-{request_id}"))
+                        .label("Deny")
+                        .style(serenity::all::ButtonStyle::Danger),
+                ])]),
+        )
+        .await?;
+    Ok(())
+}
+
+pub async fn runner(
+    conn: &Connection,
+    ctx: &Context,
+) -> Result<(), crate::error::Error> {
+    info!("Runner running");
+    loop {
+        let not_allowed_events =
+            fetch_events_by_status(conn, EventStatus::NotAllowed).await?;
+
+        for event in not_allowed_events.into_iter() {
+            if has_allow_request(conn, &event).await?.is_none() {
+                create_allow_request(conn, &event, ctx).await?;
+            }
         }
+
+        let allowed_events =
+            fetch_events_by_status(conn, EventStatus::Allowed).await?;
+
+        for event in allowed_events.into_iter() {
+            // TODO: Get Thread for event in guilds, create new ones if not already.
+            // TODO: Check for Completed documents in this event, post new documents.
+        }
+
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
-    Ok(return_value)
 }
 
 //#[tokio::main]

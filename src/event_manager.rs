@@ -1,7 +1,13 @@
 use std::process::exit;
+use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc};
 
-use libsql::params;
+use f1_bot_types::EventStatus;
+use libsql::{params, Connection};
+use serenity::all::{
+    ComponentInteraction, CreateActionRow, CreateButton,
+    CreateInteractionResponseFollowup, EditMessage, Message,
+};
 use serenity::{
     all::{
         ActivityType, Guild, GuildId, Interaction, PartialGuild, ResumedEvent,
@@ -14,6 +20,7 @@ use serenity::{
 use tracing::{error, info};
 
 use crate::commands;
+use crate::runner::{runner, AllowRequestStatus};
 
 #[derive(Clone)]
 pub struct SeriesSettings {
@@ -30,6 +37,112 @@ impl Default for SeriesSettings {
             role: None,
         }
     }
+}
+
+pub async fn allow_request(
+    db_conn: &Connection,
+    id: i64,
+    cmd: ComponentInteraction,
+    ctx: &impl CacheHttp,
+) -> Result<(), crate::error::Error> {
+    cmd.defer(ctx).await?;
+    disable_buttons(&cmd.message, ctx, id).await?;
+    cmd.create_followup(
+        ctx,
+        CreateInteractionResponseFollowup::new().content(format!(
+            "Allowed by {} ({})",
+            cmd.user.name,
+            cmd.user.global_name.as_ref().unwrap_or(&"INVALID".to_string())
+        )),
+    )
+    .await?;
+    update_allow_request(db_conn, id, AllowRequestStatus::Allowed).await?;
+    Ok(())
+}
+
+pub async fn update_allow_request(
+    db_conn: &Connection,
+    id: i64,
+    new_status: AllowRequestStatus,
+) -> Result<(), crate::error::Error> {
+    let tx = db_conn.transaction().await?;
+
+    tx.execute(
+        r#"UPDATE events SET status = ?
+    WHERE id = (
+        SELECT event_id
+        FROM allow_requests
+        WHERE id = ?
+    )
+    "#,
+        params![
+            match new_status {
+                AllowRequestStatus::Allowed => EventStatus::Allowed,
+                AllowRequestStatus::Denied => EventStatus::Denied,
+                _ => EventStatus::NotAllowed,
+            },
+            id
+        ],
+    )
+    .await?;
+
+    tx.execute(
+        r#"UPDATE allow_requests SET response = ? WHERE id = ?"#,
+        params![new_status, id],
+    )
+    .await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn disable_buttons(
+    message: &Message,
+    ctx: &impl CacheHttp,
+    id: i64,
+) -> Result<(), crate::error::Error> {
+    message
+        .clone()
+        .edit(
+            ctx,
+            EditMessage::new().components(vec![CreateActionRow::Buttons(
+                vec![
+                    CreateButton::new(format!("allow-{id}"))
+                        .label("Allow")
+                        .style(serenity::all::ButtonStyle::Success)
+                        .disabled(true),
+                    CreateButton::new(format!("deny-{id}"))
+                        .label("Deny")
+                        .style(serenity::all::ButtonStyle::Danger)
+                        .disabled(true),
+                ],
+            )]),
+        )
+        .await?;
+
+    Ok(())
+}
+
+pub async fn deny_request(
+    db_conn: &Connection,
+    id: i64,
+    cmd: ComponentInteraction,
+    ctx: &impl CacheHttp,
+) -> Result<(), crate::error::Error> {
+    cmd.defer(ctx).await?;
+    disable_buttons(&cmd.message, ctx, id).await?;
+    cmd.create_followup(
+        ctx,
+        CreateInteractionResponseFollowup::new().content(format!(
+            "Denied by {} ({})",
+            cmd.user.name,
+            cmd.user.global_name.as_ref().unwrap_or(&"INVALID".to_string())
+        )),
+    )
+    .await?;
+    update_allow_request(db_conn, id, AllowRequestStatus::Denied).await?;
+
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -54,6 +167,7 @@ impl EventHandler for BotEvents {
         _ready: serenity::all::Ready,
     ) {
         info!("Starting up!");
+
         let _ = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
             Err(why) => {
@@ -91,6 +205,13 @@ impl EventHandler for BotEvents {
             error!("Error creating sync command: {why:#?}");
         }
 
+        if !self.thread_lock.load(Ordering::Relaxed) {
+            self.thread_lock.store(true, Ordering::Relaxed);
+            if let Err(why) = runner(self.conn, &ctx.clone()).await {
+                error!("{why:#?}");
+            }
+        }
+
         ctx.set_activity(Some(serenity::gateway::ActivityData {
             name: "FIA Documents".to_owned(),
             kind: ActivityType::Listening,
@@ -118,15 +239,43 @@ impl EventHandler for BotEvents {
         ctx: Context,
         interaction: Interaction,
     ) {
-        if let Interaction::Command(cmd) = interaction {
-            if let Err(why) = match cmd.data.name.as_str() {
-                "settings" => commands::set::run(self.conn, &ctx, cmd).await,
-                "sync" => commands::sync::run(&ctx, cmd).await,
-                "shutdown" => commands::shutdown::run(&ctx, cmd).await,
-                _ => Ok(()),
-            } {
-                error!("cmd error: {why}")
-            }
+        match interaction {
+            Interaction::Component(cmd) => {
+                let Some((kind, id)) = cmd.data.custom_id.split_once("-")
+                else {
+                    return;
+                };
+                info!("kind: {kind}; Id: {id}");
+                match match kind {
+                    "allow" => {
+                        allow_request(self.conn, id.parse().unwrap(), cmd, &ctx)
+                            .await
+                    },
+                    "deny" => {
+                        deny_request(self.conn, id.parse().unwrap(), cmd, &ctx)
+                            .await
+                    },
+                    _ => Ok(()),
+                } {
+                    Ok(_) => {},
+                    Err(why) => {
+                        error!("Interaction Error: {why:#?}");
+                    },
+                }
+            },
+            Interaction::Command(cmd) => {
+                if let Err(why) = match cmd.data.name.as_str() {
+                    "settings" => {
+                        commands::set::run(self.conn, &ctx, cmd).await
+                    },
+                    "sync" => commands::sync::run(&ctx, cmd).await,
+                    "shutdown" => commands::shutdown::run(&ctx, cmd).await,
+                    _ => Ok(()),
+                } {
+                    error!("cmd error: {why}")
+                }
+            },
+            _ => {},
         }
     }
 
@@ -143,7 +292,7 @@ impl EventHandler for BotEvents {
         if let Err(why) = self
             .conn
             .execute(
-                r#"INSERT INTO guilds (discord_id, name, date_joined) 
+                r#"INSERT INTO guilds (discord_id, name, joined_at) 
         VALUES (?, ?, ?) 
         ON CONFLICT(discord_id) 
         DO UPDATE SET 

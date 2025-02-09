@@ -12,6 +12,7 @@ chrono = { version = "0.4.39", features = ["serde"] }
 dotenvy = "0.15.7"
 f1-bot-types = { git = "https://codeberg.org/MTO/f1-bot-types", version = "0.1.0" }
 libsql = "0.6.0"
+notifbot-macros = { git = "https://codeberg.org/MTO/f1-bot-macros", version = "0.1.0" }
 serde = { version = "1.0.217", features = ["derive"] }
 serenity = { git = "https://github.com/serenity-rs/serenity", version = "0.12.2", features = ["cache"], rev = "be4193a60ea1b7cf60b890a4f1491ab63f50945c" }
 tokio = { version = "1.43.0", features = ["full"] }
