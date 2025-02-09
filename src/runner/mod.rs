@@ -1,116 +1,21 @@
-use std::error::Error;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, UNIX_EPOCH};
-
-use chrono::DateTime;
-use chrono::Datelike;
-use chrono::Utc;
-use f1_bot_types::Series;
-use serenity::all::ChannelType::PublicThread;
-use serenity::all::{AutoArchiveDuration, ChannelId};
-use serenity::builder::CreateEmbed;
-use serenity::builder::CreateEmbedAuthor;
-use serenity::builder::CreateMessage;
-use serenity::builder::CreateThread;
-use serenity::prelude::*;
+use f1_bot_types::Event;
+use libsql::Connection;
 use tracing::{error, info};
 
-use crate::event_manager::{CachedGuild, GuildCache};
-
-#[derive(Debug, Clone)]
-pub struct JoinImage {
-    id: u64,
-    event: u64,
-    event_name: String,
-    created: DateTime<Utc>,
-    title: String,
-    url: String,
-    mirror: String,
-    image: String,
-    page: u32,
-    //   thread_id: u64,
-}
-
-pub struct AllGuild {
-    pub id: u64,
-    pub f1_channel: Option<u64>,
-    pub f1_threads: bool,
-    pub f1_role: Option<u64>,
-    pub f2_channel: Option<u64>,
-    pub f2_threads: bool,
-    pub f2_role: Option<u64>,
-    pub f3_channel: Option<u64>,
-    pub f3_threads: bool,
-    pub f3_role: Option<u64>,
-}
-
-#[derive(Debug, Clone)]
-#[allow(dead_code)]
-struct MinImg {
-    url: String,
-    page: u32,
-}
-
-#[derive(Debug, Clone)]
-pub struct ImageDoc {
-    id: u64,
-    event: u64,
-    #[allow(unused)]
-    event_name: String,
-    title: String,
-    url: String,
-    mirror: String,
-    images: Vec<MinImg>,
-    created: DateTime<Utc>,
-}
-
-impl From<ImageDoc> for Vec<CreateEmbed> {
-    fn from(value: ImageDoc) -> Self {
-        let mut return_array = vec![];
-        let main_embed = CreateEmbed::new()
-            .title(value.title)
-            .url(value.url.clone())
-            .description(format!("[mirror]({})", value.mirror))
-            .colour(0x003063)
-            .thumbnail("https://static.ort.dev/fiadontsueme/fia_logo.png")
-            .timestamp(value.created)
-            .author(CreateEmbedAuthor::new("FIA Document"));
-
-        if let Some(image) = value.images.first() {
-            return_array.push(main_embed.image(image.url.clone()));
-        } else {
-            return_array.push(main_embed);
-        }
-
-        for image in value.images.into_iter().skip(1).take(3) {
-            return_array.push(
-                CreateEmbed::new().url(value.url.clone()).image(image.url),
-            );
-        }
-        drop(value.url);
-        return_array
-    }
-}
-
-pub struct MinThread {
-    id: u64,
-    guild: u64,
-    event: u64,
-    year: i32,
-}
-
-struct ThreadCache {
-    last_populated: DateTime<Utc>,
-    cache: Vec<MinThread>,
-}
-
-impl Default for ThreadCache {
-    fn default() -> Self {
-        Self {
-            last_populated: DateTime::from(UNIX_EPOCH),
-            cache: Vec::with_capacity(100),
+pub async fn fetch_unallowed_events(
+    db_conn: &Connection
+) -> Result<Vec<Event>, Box<dyn std::error::Error>> {
+    let mut stmt = db_conn.prepare("SELECT * FROM events WHERE status = \"NotAllowed\" AND year = strftime('%Y', current_timestamp)").await?;
+    let mut data = stmt.query(()).await?;
+    let mut return_value = Vec::new();
+    while let Ok(Some(data)) = data.next().await {
+        info!("{data:#?}");
+        match libsql::de::from_row::<Event>(&data) {
+            Ok(event) => return_value.push(event),
+            Err(why) => error!("{why:#?}")
         }
     }
+    Ok(return_value)
 }
 
 //#[tokio::main]
@@ -156,14 +61,6 @@ impl Default for ThreadCache {
 //        .await;
 //    }
 //}
-
-#[derive(Debug, Clone)]
-pub struct NewEvent {
-    pub id: u64,
-    pub name: String,
-    pub year: i32,
-    pub series: i8,
-}
 
 //async fn create_threads(
 //    db_conn: &mut MySqlConnection,
@@ -378,18 +275,6 @@ pub struct NewEvent {
 //    Ok(())
 //}
 
-fn create_message(
-    doc: &ImageDoc,
-    role: Option<u64>,
-) -> CreateMessage {
-    let embeds: Vec<CreateEmbed> = doc.clone().into();
-    let message = CreateMessage::new().embeds(embeds);
-    if let Some(role) = role {
-        return message.content(format!("<@&{}>", role));
-    }
-    message
-}
-
 //async fn populate_cache(
 //    db_conn: &mut MySqlConnection,
 //    cache: &mut ThreadCache,
@@ -417,64 +302,4 @@ fn create_message(
 //    info!("populated thread cache");
 //    cache.last_populated = Utc::now();
 //    cache.cache = data;
-//}
-
-fn join_to_doc(join_data: Vec<JoinImage>) -> Vec<ImageDoc> {
-    let mut docs: Vec<ImageDoc> = Vec::with_capacity(join_data.len());
-
-    for doc_with_img in join_data.into_iter() {
-        if let Some(last_doc) = docs.last_mut() {
-            if last_doc.id == doc_with_img.id {
-                last_doc.images.push(MinImg {
-                    url: doc_with_img.image,
-                    page: doc_with_img.page,
-                });
-                continue;
-            }
-        }
-
-        docs.push(ImageDoc {
-            id: doc_with_img.id,
-            event: doc_with_img.event,
-            event_name: doc_with_img.event_name,
-            title: doc_with_img.title,
-            url: doc_with_img.url,
-            mirror: doc_with_img.mirror,
-            images: vec![MinImg {
-                url: doc_with_img.image,
-                page: doc_with_img.page,
-            }],
-            created: doc_with_img.created,
-        });
-    }
-    docs
-}
-
-//async fn unposted_documents(
-//    db_conn: &mut MySqlConnection,
-//    racing_series: Series,
-//) -> Result<Vec<JoinImage>, sqlx::Error> {
-//    sqlx::query_as_unchecked!(
-//        JoinImage,
-//        r#"
-//    SELECT
-//    documents.`id` as `id!`,
-//    documents.event as event,
-//    documents.title,
-//    documents.url,
-//    documents.mirror,
-//    documents.created,
-//    images.url as image,
-//    images.pagenum as page,
-//    events.name as event_name
-//    FROM documents
-//    JOIN images ON document = documents.id
-//    JOIN events ON events.id = documents.event
-//    WHERE documents.series = ?
-//    AND notified = 0
-//    AND done = 1"#,
-//        racing_series.to_string()
-//    )
-//    .fetch_all(db_conn)
-//    .await
 //}

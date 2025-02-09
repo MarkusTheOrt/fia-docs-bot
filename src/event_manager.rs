@@ -1,14 +1,11 @@
-use std::sync::atomic::AtomicBool;
-use std::sync::Mutex;
-use std::{process::exit, sync::Arc, time::UNIX_EPOCH};
+use std::process::exit;
+use std::sync::{atomic::AtomicBool, Arc};
 
-use chrono::{DateTime, Utc};
 use libsql::params;
-use serenity::futures::future::join_all;
 use serenity::{
     all::{
         ActivityType, Guild, GuildId, Interaction, PartialGuild, ResumedEvent,
-        UnavailableGuild,
+        ShardManager, UnavailableGuild,
     },
     async_trait,
     prelude::*,
@@ -16,11 +13,7 @@ use serenity::{
 
 use tracing::{error, info};
 
-use crate::commands::{
-    set::{self, run},
-    unimplemented,
-};
-use crate::runner::AllGuild;
+use crate::commands;
 
 #[derive(Clone)]
 pub struct SeriesSettings {
@@ -47,47 +40,10 @@ pub struct CachedGuild {
     pub f3: SeriesSettings,
 }
 
-impl From<AllGuild> for CachedGuild {
-    fn from(value: AllGuild) -> Self {
-        Self {
-            id: value.id,
-            f1: SeriesSettings {
-                channel: value.f1_channel,
-                use_threads: value.f1_threads,
-                role: value.f1_role,
-            },
-            f2: SeriesSettings {
-                channel: value.f2_channel,
-                use_threads: value.f2_threads,
-                role: value.f2_role,
-            },
-            f3: SeriesSettings {
-                channel: value.f3_channel,
-                use_threads: value.f3_threads,
-                role: value.f3_role,
-            },
-        }
-    }
-}
-
-pub struct GuildCache {
-    pub last_populated: DateTime<Utc>,
-    pub cache: Vec<CachedGuild>,
-}
-
-impl Default for GuildCache {
-    fn default() -> Self {
-        Self {
-            last_populated: DateTime::from(UNIX_EPOCH),
-            cache: vec![],
-        }
-    }
-}
-
 pub struct BotEvents {
-    pub guild_cache: Arc<Mutex<GuildCache>>,
     pub thread_lock: AtomicBool,
     pub conn: &'static libsql::Connection,
+    pub shards: Option<Arc<ShardManager>>,
 }
 
 #[async_trait]
@@ -97,7 +53,6 @@ impl EventHandler for BotEvents {
         ctx: Context,
         _ready: serenity::all::Ready,
     ) {
-        info!("Ready called");
         info!("Starting up!");
         let _ = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
@@ -115,29 +70,25 @@ impl EventHandler for BotEvents {
             },
         };
 
+        if let Err(why) = ctx
+            .http
+            .create_guild_command(
+                GuildId::new(883847530687913995),
+                &crate::commands::sync::register(),
+            )
+            .await
         {
-            let mut fut = vec![];
-
-            if let Ok(commands) = ctx.http().get_global_commands().await {
-                for command in commands {
-                    fut.push(ctx.http.delete_global_command(command.id));
-                }
-            }
-
-            for fut in join_all(fut).await {
-                if let Err(why) = fut {
-                    error!("removing command: {why}");
-                }
-            }
+            error!("Error creating sync command: {why:#?}");
         }
-
+        if let Err(why) = ctx
+            .http
+            .create_guild_command(
+                GuildId::new(883847530687913995),
+                &crate::commands::shutdown::register(),
+            )
+            .await
         {
-            if let Err(why) =
-                ctx.http.create_global_command(&set::register()).await
-            {
-                error!("Error registering command: {why}");
-                exit(0x0100);
-            }
+            error!("Error creating sync command: {why:#?}");
         }
 
         ctx.set_activity(Some(serenity::gateway::ActivityData {
@@ -169,8 +120,10 @@ impl EventHandler for BotEvents {
     ) {
         if let Interaction::Command(cmd) = interaction {
             if let Err(why) = match cmd.data.name.as_str() {
-                "settings" => run(self.conn, &ctx, cmd, &self.guild_cache).await,
-                _ => unimplemented(&ctx, cmd).await,
+                "settings" => commands::set::run(self.conn, &ctx, cmd).await,
+                "sync" => commands::sync::run(&ctx, cmd).await,
+                "shutdown" => commands::shutdown::run(&ctx, cmd).await,
+                _ => Ok(()),
             } {
                 error!("cmd error: {why}")
             }
@@ -183,6 +136,10 @@ impl EventHandler for BotEvents {
         guild: Guild,
         _is_new: Option<bool>,
     ) {
+        match _is_new {
+            None | Some(false) => return,
+            Some(true) => {},
+        }
         if let Err(why) = self
             .conn
             .execute(

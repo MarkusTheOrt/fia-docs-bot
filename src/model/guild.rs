@@ -1,9 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serenity::model::prelude::{Guild, PartialGuild};
-use std::sync::{Arc, Mutex};
 
-use crate::event_manager::{CachedGuild, GuildCache, SeriesSettings};
 
 #[derive(Serialize, Deserialize)]
 pub struct DbGuild {

@@ -1,11 +1,12 @@
 use std::{
-    sync::{atomic::AtomicBool, Arc, Mutex},
+    sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 
-use event_manager::{BotEvents, GuildCache};
+use event_manager::BotEvents;
 
-use serenity::{all::Settings, client::ClientBuilder, prelude::*};
+use runner::fetch_unallowed_events;
+use serenity::{all::{Settings, ShardManager}, client::ClientBuilder, prelude::*};
 
 use tracing::{error, info};
 
@@ -13,6 +14,12 @@ mod commands;
 mod event_manager;
 mod model;
 mod runner;
+
+pub struct ShardManagerBox;
+
+impl TypeMapKey for ShardManagerBox {
+    type Value = Arc<ShardManager>;
+}
 
 
 #[tokio::main]
@@ -37,11 +44,18 @@ async fn main() {
 
     let conn = db_client.connect().unwrap();
     
+    let events = fetch_unallowed_events(&conn).await.unwrap();
 
+    info!("Event?");
+
+    for event in events {
+        info!("{event:#?}");
+    }
+    
     let event_manager = BotEvents {
-        guild_cache: Arc::new(Mutex::new(GuildCache::default())),
         thread_lock: AtomicBool::new(false),
         conn: Box::leak(Box::new(conn)),
+        shards: None,
     };
     let mut settings = Settings::default();
     settings.cache_users = false;
@@ -59,7 +73,24 @@ async fn main() {
                 return;
             },
         };
-    if let Err(why) = client.start().await {
+        
+        {
+            let mut data = client.data.write().await;
+            data.insert::<ShardManagerBox>(client.shard_manager.clone());
+        }
+
+    let shard_manager = client.shard_manager.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("Error registering ctrlc handler");
+        shard_manager.shutdown_all().await;
+    });
+
+    if let Err(why) = client.start_autosharded().await {
         error!("Error starting Discord client: {why}");
+    }
+
+    // Final sync once the bot stops
+    if let Err(why) = db_client.sync().await {
+        error!("Error syncing Database: {why:#?}");
     }
 }

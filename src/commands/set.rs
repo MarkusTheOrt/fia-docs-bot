@@ -1,4 +1,3 @@
-use std::sync::{Arc, Mutex};
 
 use f1_bot_types::Series;
 use serenity::{
@@ -18,7 +17,6 @@ use serenity::{
 
 use libsql::{params, Connection};
 
-use crate::event_manager::GuildCache;
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("settings")
@@ -76,7 +74,6 @@ pub async fn run(
     pool: &Connection,
     ctx: &Context,
     cmd: CommandInteraction,
-    cache: &Arc<Mutex<GuildCache>>,
 ) -> Result<(), serenity::Error> {
     if cmd.guild_id.is_none() {
         let builder = CreateInteractionResponse::Message(
@@ -99,13 +96,13 @@ pub async fn run(
         if let ResolvedValue::SubCommand(options) = command.value {
             let rv = match command.name {
                 "f1" => {
-                    series_command(Series::F1, pool, &cmd, options, cache).await
+                    series_command(Series::F1, pool, &cmd, options ).await
                 },
                 "f2" => {
-                    series_command(Series::F2, pool, &cmd, options, cache).await
+                    series_command(Series::F2, pool, &cmd, options ).await
                 },
                 "f3" => {
-                    series_command(Series::F3, pool, &cmd, options, cache).await
+                    series_command(Series::F3, pool, &cmd, options ).await
                 },
                 _ => {
                     let builder = CreateInteractionResponseFollowup::new()
@@ -151,7 +148,6 @@ async fn series_command<'a>(
     pool: &Connection,
     cmd: &CommandInteraction,
     options: Vec<ResolvedOption<'_>>,
-    cache: &Arc<Mutex<GuildCache>>,
 ) -> Result<String, String> {
     let options = resolve_options(options);
     if options.is_none() {
@@ -162,23 +158,6 @@ async fn series_command<'a>(
     let role_id = role.map(|role| role.id.get());
 
     let channel_id = channel.map(|channel| channel.id.get());
-    // TODO: Write the results into our cache so we don't have to query the database every 5 seconds..u
-    {
-        let mut cache = cache.lock().unwrap();
-        if let Some(guild) =
-            cache.cache.iter_mut().find(|p| p.id == guild.get())
-        {
-            let series = match series {
-                Series::F1 => &mut guild.f1,
-                Series::F2 => &mut guild.f2,
-                Series::F3 => &mut guild.f3,
-                _ => panic!("F1Academy not Supported!"),
-            };
-            series.role = role_id;
-            series.channel = channel.map(|channel| channel.id.get());
-            series.use_threads = threads;
-        }
-    }
 
     match series_query(pool, series, channel_id, threads, role_id, guild.get())
         .await

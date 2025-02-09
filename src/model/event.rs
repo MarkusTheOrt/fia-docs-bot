@@ -11,13 +11,14 @@ pub struct Event {
     pub series: Series,
     pub created: DateTime<Utc>,
     // Whether or not the Event is posted.
-    pub posted: bool,
+    pub posted: u8,
     // Whether or not the Event is allowed by the botowner.
-    pub allowed: bool,
+    pub allowed: u8,
 }
 
 use libsql::de;
 
+#[allow(unused)]
 pub async fn fetch_events(
     db_conn: &libsql::Connection
 ) -> libsql::Result<Vec<Event>> {
