@@ -4,11 +4,11 @@ services:
     ports:
         - 8080:8080
         - 5001:5001
-    environment:
-        - SQLD_NODE=primary
     volumes:
         - ./data/libsql:/var/lib/sqld
     container_name: database
+    env_file:
+        - ./.db.env
   libsql-client:
     container_name: db-ui
     build:

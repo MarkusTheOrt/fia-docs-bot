@@ -1,7 +1,8 @@
 #![allow(unused)]
 use crate::error::Result;
-use f1_bot_types::{Event, EventStatus};
+use f1_bot_types::{Event, EventStatus, Series};
 use libsql::{de, params, Connection};
+use serde::Serialize;
 
 pub async fn fetch_events_by_status(
     db_conn: &Connection,

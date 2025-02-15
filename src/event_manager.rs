@@ -2,11 +2,12 @@ use std::process::exit;
 use std::sync::atomic::Ordering;
 use std::sync::{atomic::AtomicBool, Arc};
 
+use chrono::Utc;
 use f1_bot_types::EventStatus;
 use libsql::{params, Connection};
 use serenity::all::{
     ComponentInteraction, CreateActionRow, CreateButton,
-    CreateInteractionResponseFollowup, EditMessage, Message,
+    CreateInteractionResponseFollowup, EditMessage, Message, UserId,
 };
 use serenity::{
     all::{
@@ -56,13 +57,15 @@ pub async fn allow_request(
         )),
     )
     .await?;
-    update_allow_request(db_conn, id, AllowRequestStatus::Allowed).await?;
+    update_allow_request(db_conn, id, cmd.user.id, AllowRequestStatus::Allowed)
+        .await?;
     Ok(())
 }
 
 pub async fn update_allow_request(
     db_conn: &Connection,
     id: i64,
+    user_id: UserId,
     new_status: AllowRequestStatus,
 ) -> Result<(), crate::error::Error> {
     let tx = db_conn.transaction().await?;
@@ -87,8 +90,8 @@ pub async fn update_allow_request(
     .await?;
 
     tx.execute(
-        r#"UPDATE allow_requests SET response = ? WHERE id = ?"#,
-        params![new_status, id],
+        r#"UPDATE allow_requests SET response = ?, approved_by = ?, approved_at = ? WHERE id = ?"#,
+        params![new_status, user_id.to_string(), Utc::now().to_rfc3339(), id],
     )
     .await?;
 
@@ -140,7 +143,8 @@ pub async fn deny_request(
         )),
     )
     .await?;
-    update_allow_request(db_conn, id, AllowRequestStatus::Denied).await?;
+    update_allow_request(db_conn, id, cmd.user.id, AllowRequestStatus::Denied)
+        .await?;
 
     Ok(())
 }

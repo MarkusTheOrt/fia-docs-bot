@@ -26,6 +26,8 @@ pub struct AllowRequest {
     event_id: u64,
     response: AllowRequestStatus,
     created_at: DateTime<Utc>,
+    approved_by: Option<String>,
+    approved_at: Option<DateTime<Utc>>,
 }
 
 pub async fn has_allow_request(
@@ -59,6 +61,8 @@ pub async fn create_allow_request(
         event_id: event.id,
         response: AllowRequestStatus::Open,
         created_at: Utc::now(),
+        approved_by: None,
+        approved_at: None,
     })
 }
 
@@ -111,6 +115,7 @@ pub async fn runner(
             fetch_events_by_status(conn, EventStatus::Allowed).await?;
 
         for event in allowed_events.into_iter() {
+            info!("allowed event: {}", event.title);
             // TODO: Get Thread for event in guilds, create new ones if not already.
             // TODO: Check for Completed documents in this event, post new documents.
         }
