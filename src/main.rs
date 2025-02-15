@@ -33,11 +33,12 @@ async fn main() {
     _ = dotenvy::dotenv();
     let discord_token =
         std::env::var("DISCORD_TOKEN").expect("Discord token empty");
+    let db_token = std::env::var("DATABASE_TOKEN").expect("db_token empty");
     let db_url = std::env::var("DATABASE_URL").expect("Database url empty");
     let db_client = libsql::Builder::new_remote_replica(
         "./local.db",
         db_url,
-        "".to_string(),
+        db_token
     )
     .sync_interval(Duration::from_secs(60))
     .build()
@@ -51,7 +52,6 @@ async fn main() {
     let event_manager = BotEvents {
         thread_lock: AtomicBool::new(false),
         conn: Box::leak(Box::new(conn)),
-        shards: None,
     };
     let mut settings = Settings::default();
     settings.cache_users = false;

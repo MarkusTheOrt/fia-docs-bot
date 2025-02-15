@@ -1,8 +1,10 @@
 /target
 /tmp
-.env
+*.env
 Secrets.toml
 Secrets.dev.toml
 local.db
 local.db*
 /data
+*.pem
+*.base64

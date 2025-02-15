@@ -13,6 +13,7 @@ COPY --from=builder /app/target/release/fia-docs-bot /app/fia-docs-bot
 
 RUN chmod +x /app/fia-docs-bot
 
+STOPSIGNAL SIGINT
 
 CMD /app/fia-docs-bot
 

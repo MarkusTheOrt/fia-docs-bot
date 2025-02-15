@@ -72,7 +72,7 @@ pub async fn run(
     pool: &Connection,
     ctx: &Context,
     cmd: CommandInteraction,
-) -> Result<(), serenity::Error> {
+) -> crate::error::Result {
     if cmd.guild_id.is_none() {
         let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new().ephemeral(true).embed(

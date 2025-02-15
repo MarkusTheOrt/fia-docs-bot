@@ -7,6 +7,8 @@ use serenity::{
 };
 use tracing::{error, info};
 
+use crate::commands::repost;
+
 use super::set;
 
 pub fn register() -> CreateCommand {
@@ -18,7 +20,7 @@ pub fn register() -> CreateCommand {
 pub async fn run(
     ctx: impl CacheHttp,
     cmd: CommandInteraction,
-) -> Result<(), serenity::Error> {
+) -> crate::error::Result {
     info!("Running!");
     cmd.defer_ephemeral(&ctx).await?;
     {
@@ -41,7 +43,11 @@ pub async fn run(
         if let Err(why) =
             ctx.http().create_global_command(&set::register()).await
         {
-            error!("Error registering command: {why}");
+            error!("Error registering \"settings\" command: {why:#?}");
+        }
+
+        if let Err(why) = ctx.http().create_global_command(&repost::register()).await {
+            error!("Error registering \"repost\" command: {why:#?}")
         }
     }
 

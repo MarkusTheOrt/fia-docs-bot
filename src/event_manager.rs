@@ -156,7 +156,6 @@ pub struct CachedGuild {
 pub struct BotEvents {
     pub thread_lock: AtomicBool,
     pub conn: &'static libsql::Connection,
-    pub shards: Option<Arc<ShardManager>>,
 }
 
 #[async_trait]
@@ -270,6 +269,9 @@ impl EventHandler for BotEvents {
                     },
                     "sync" => commands::sync::run(&ctx, cmd).await,
                     "shutdown" => commands::shutdown::run(&ctx, cmd).await,
+                    "check-repost" => {
+                        commands::repost::run(self.conn, &ctx, cmd).await
+                    },
                     _ => Ok(()),
                 } {
                     error!("cmd error: {why}")

@@ -15,7 +15,7 @@ pub fn register() -> CreateCommand {
 pub async fn run(
     ctx: &Context,
     cmd: CommandInteraction,
-) -> Result<(), serenity::Error> {
+) -> crate::error::Result {
     cmd.create_response(
         &ctx,
         Message(

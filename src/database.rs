@@ -11,7 +11,7 @@ pub async fn fetch_events_by_status(
         .query(
             r#"SELECT * FROM events 
     WHERE status = ? 
-    AND year = srftime('%Y', current_timestamp)"#,
+    AND year = strftime('%Y', current_timestamp)"#,
             [status],
         )
         .await?;
