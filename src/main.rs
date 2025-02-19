@@ -7,10 +7,9 @@ use crate::middleware::{
     magick::{clear_tmp_dir, create_tmp_dir},
     runner::runner,
 };
-mod bodies;
+
 mod error;
 mod middleware;
-mod model;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {

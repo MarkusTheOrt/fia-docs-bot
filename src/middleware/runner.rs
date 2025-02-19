@@ -12,7 +12,7 @@ use html5ever::{
 use libsql::{params, Connection};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use std::{
-    error::Error, fs::File, path::PathBuf, str::FromStr, time::Duration,
+    cell::RefCell, fs::File, path::PathBuf, str::FromStr, time::Duration,
 };
 use std::{
     io::{Read, Write},
@@ -23,10 +23,6 @@ use tracing::{error, info};
 const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2024-2043";
 const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/formula-2-championship-44";
 const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/fia-formula-3-championship-1012";
-
-struct MinDoc {
-    pub url: String,
-}
 
 struct LocalCache {
     pub documents: Vec<Document>,
@@ -438,14 +434,14 @@ async fn get_season(
     let _ = bytes.as_bytes().read_to_tendril(&mut tendril);
     let mut input = BufferQueue::default();
     input.push_back(tendril.try_reinterpret().unwrap());
-    let mut parser_season = super::parser::Season {
+    let mut parser_season = RefCell::new(super::parser::Season {
         year,
         events: vec![],
-    };
+    });
     let sink = HTMLParser::new(&mut parser_season);
     let opts = TokenizerOpts::default();
     let tok = Tokenizer::new(sink, opts);
     let _ = tok.feed(&mut input);
     tok.end();
-    Ok(parser_season)
+    Ok(parser_season.into_inner())
 }
