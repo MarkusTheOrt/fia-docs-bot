@@ -1,4 +1,4 @@
-use std::num::NonZeroI16;
+use std::cell::RefCell;
 
 use html5ever::{
     tokenizer::{Tag, TagKind::StartTag, Token, TokenSink, TokenSinkResult},
@@ -26,31 +26,36 @@ pub struct ParserDocument {
 
 #[derive(Debug)]
 pub struct Season {
-    pub year: NonZeroI16,
+    pub year: i32,
     pub events: Vec<ParserEvent>,
 }
 
 #[derive(Debug)]
 pub struct ParserEvent {
     pub title: Option<String>,
-    pub season: Option<NonZeroI16>,
+    pub season: Option<i32>,
     pub documents: Vec<ParserDocument>,
 }
 
 pub struct HTMLParser<'a> {
-    state: ParserState,
-    pub season: &'a mut Season,
-    event: Option<ParserEvent>,
-    document: Option<ParserDocument>,
+    state: RefCell<ParserState>,
+    pub season: RefCell<Season>,
+    event: RefCell<Option<ParserEvent>>,
+    document: RefCell<Option<ParserDocument>>,
 }
 
 impl<'a> HTMLParser<'a> {
-    pub fn new(season: &'a mut Season) -> Self {
+    pub fn new(
+        season: RefCell<Season>,
+        state: RefCell<ParserState>,
+        event: RefCell<Option<ParserEvent>>,
+        document: RefCell<Option<ParserDocument>>,
+    ) -> Self {
         Self {
-            state: ParserState::None,
+            state,
             season,
-            event: None,
-            document: None,
+            event,
+            document,
         }
     }
 }
@@ -68,7 +73,7 @@ impl<'a> TokenSink for HTMLParser<'a> {
     type Handle = ();
 
     fn process_token(
-        &mut self,
+        &self,
         token: Token,
         _line_number: u64,
     ) -> TokenSinkResult<Self::Handle> {
@@ -79,11 +84,11 @@ impl<'a> TokenSink for HTMLParser<'a> {
                 match (tag_token.kind, name) {
                     (StartTag, "ul") => {
                         if class.unwrap().value.as_ref() == "event-wrapper" {
-                            self.state = ParserState::BeginEvent;
+                            *self.state.get_mut() = ParserState::BeginEvent;
                         }
                     },
                     (StartTag, "a") => {
-                        match self.state {
+                        match self.state.get_mut() {
                             ParserState::Next => {},
                             _ => {
                                 return TokenSinkResult::Continue;
@@ -93,7 +98,7 @@ impl<'a> TokenSink for HTMLParser<'a> {
                             get_attr(&tag_token, "href").as_ref()
                         {
                             let href = href.value.as_ref();
-                            self.document = Some(ParserDocument {
+                            *self.document.get_mut() = Some(ParserDocument {
                                 url: Some(format!(
                                     "{}{}",
                                     BASE_URL,
@@ -102,7 +107,7 @@ impl<'a> TokenSink for HTMLParser<'a> {
                                 title: None,
                                 date: None,
                             });
-                            self.state = ParserState::Document;
+                            *self.state.get_mut() = ParserState::Document;
                         }
                     },
                     (StartTag, "div") => {
@@ -110,26 +115,29 @@ impl<'a> TokenSink for HTMLParser<'a> {
                             return TokenSinkResult::Continue;
                         }
                         let class = class.as_ref().unwrap().value.as_ref();
-                        match self.state {
+                        match self.state.get_mut() {
                             ParserState::BeginEvent => {
                                 if class.starts_with("event-title") {
-                                    self.state = ParserState::EventTitle;
+                                    *self.state.get_mut() =
+                                        ParserState::EventTitle;
                                 }
                             },
                             ParserState::Document => {
                                 if class == "title" {
-                                    self.state = ParserState::DocumentTitle;
+                                    *self.state.get_mut() =
+                                        ParserState::DocumentTitle;
                                 }
                             },
                             _ => return TokenSinkResult::Continue,
                         }
                     },
-                    (StartTag, "span") => match self.state {
+                    (StartTag, "span") => match self.state.get_mut() {
                         ParserState::Document => {
                             if class.as_ref().unwrap().value.as_ref()
                                 == "date-display-single"
                             {
-                                self.state = ParserState::DocumentDate;
+                                *self.state.get_mut() =
+                                    ParserState::DocumentDate;
                             }
                         },
                         _ => {},
@@ -138,39 +146,39 @@ impl<'a> TokenSink for HTMLParser<'a> {
                     _ => {},
                 }
             },
-            Token::CharacterTokens(chars) => match self.state {
+            Token::CharacterTokens(chars) => match self.state.get_mut() {
                 ParserState::EventTitle => {
                     if chars.trim().len() == 0 {
                         return TokenSinkResult::Continue;
                     }
                     if let Some(event) = self.event.take() {
-                        self.season.events.push(event);
+                        self.season.get_mut().events.push(event);
                     }
                     let event = ParserEvent {
-                        season: Some(self.season.year),
+                        season: Some(self.season.get_mut().year),
                         title: Some(chars.trim().to_owned()),
                         documents: Vec::with_capacity(60),
                     };
-                    self.state = ParserState::Next;
-                    self.event = Some(event);
+                    *self.state.get_mut() = ParserState::Next;
+                    *self.event.get_mut() = Some(event);
                 },
                 ParserState::DocumentTitle => {
                     if chars.trim().len() == 0 {
                         return TokenSinkResult::Continue;
                     }
-                    self.document.as_mut().unwrap().title =
+                    self.document.get_mut().unwrap().title =
                         Some(chars.trim().to_owned());
-                    self.state = ParserState::Document;
+                    *self.state.get_mut() = ParserState::Document;
                 },
                 ParserState::DocumentDate => {
                     if chars.trim().len() == 0 {
                         return TokenSinkResult::Continue;
                     }
-                    self.document.as_mut().unwrap().date =
+                    *self.document.get_mut().as_ref().unwrap().date =
                         Some(chars.trim().to_owned());
-                    self.state = ParserState::Next;
+                    *self.state.get_mut() = ParserState::Next;
                     if let Some(doc) = self.document.take() {
-                        self.event.as_mut().unwrap().documents.push(doc);
+                        self.event.get_mut().unwrap().documents.push(doc);
                     }
                 },
                 ParserState::Document => {},
@@ -178,7 +186,7 @@ impl<'a> TokenSink for HTMLParser<'a> {
             },
             Token::EOFToken => {
                 if let Some(event) = self.event.take() {
-                    self.season.events.push(event);
+                    self.season.get_mut().events.push(event);
                 }
             },
             _ => {},

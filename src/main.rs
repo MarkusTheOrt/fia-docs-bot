@@ -1,38 +1,49 @@
+use std::{error::Error, time::Duration};
+
 use middleware::magick::check_magick;
-use sqlx::postgres::PgPoolOptions;
+use tracing::error;
 
 use crate::middleware::{
     magick::{clear_tmp_dir, create_tmp_dir},
     runner::runner,
 };
 mod bodies;
+mod error;
 mod middleware;
 mod model;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt::init();
+
     if !check_magick() {
-        eprintln!("Couldn't find imagemagick! exiting...");
-        std::process::exit(1);
+        error!("Couldn't find imagemagick! exiting...");
     }
     if let Err(why) = create_tmp_dir() {
-        eprintln!("Couldn't create tmp dir: {why}");
+        error!("Couldn't create tmp dir: {why}");
         std::process::exit(1);
     }
     if let Err(why) = clear_tmp_dir() {
-        eprintln!("Couldn't create tmp dir: {why}");
+        error!("Couldn't create tmp dir: {why}");
         std::process::exit(1);
     }
 
     drop(dotenvy::dotenv());
-    let database_connect =
-        std::env::var("DATABASE_URL").expect("Database URL not set.");
 
-    let database = PgPoolOptions::new()
-        .connect_lazy(&database_connect)
-        .expect("Database Connection failed");
+    let database = libsql::Builder::new_remote_replica(
+        ":memory:",
+        std::env::var("DATABASE_URL").expect("Database URL not set"),
+        std::env::var("DATABASE_TOKEN").expect("Database Token not set"),
+    )
+    .sync_interval(Duration::from_secs(30))
+    .build()
+    .await?;
 
-    drop(database_connect);
+    let db_conn = database.connect()?;
 
-    runner(&database).await;
+    runner(db_conn).await?;
+
+    database.sync().await?;
+
+    Ok(())
 }
