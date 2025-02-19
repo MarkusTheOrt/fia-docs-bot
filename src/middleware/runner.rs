@@ -6,7 +6,7 @@ use aws_sign_v4::AwsSign;
 use chrono::{DateTime, Datelike, Utc};
 use f1_bot_types::{Document, Event, Series};
 use html5ever::{
-    tendril::{ByteTendril, ReadExt},
+    tendril::{fmt::Slice, ByteTendril, ReadExt, SliceExt},
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
 };
 use libsql::{params, Connection};
@@ -426,12 +426,10 @@ async fn get_season(
     url: &str,
     year: i32,
 ) -> crate::error::Result<super::parser::Season> {
-    let test = reqwest::get(url).await?;
-
-    let bytes = test.text().await?;
-
+    let request = reqwest::get(url).await?;
+    let bytes = request.bytes().await?;
     let mut tendril = ByteTendril::new();
-    let _ = bytes.as_bytes().read_to_tendril(&mut tendril);
+    bytes.as_bytes().read_to_tendril(&mut tendril)?;
     let mut input = BufferQueue::default();
     input.push_back(tendril.try_reinterpret().unwrap());
     let mut parser_season = RefCell::new(super::parser::Season {
