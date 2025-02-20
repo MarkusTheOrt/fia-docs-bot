@@ -1,19 +1,16 @@
 use std::{
-    borrow::Cow, path::{Path, PathBuf}, process::Stdio, str::FromStr
+    borrow::Cow,
+    path::{Path, PathBuf},
+    process::Stdio,
+    str::FromStr,
 };
 
 use crate::error::MagickError;
 
-#[cfg(target_os = "windows")]
-const CONVERT_COMMAND: &str = "magick";
-
-#[cfg(not(target_os = "windows"))]
-const CONVERT_COMMAND: &str = "convert";
-
 pub fn check_magick() -> bool {
     let cmd = match std::process::Command::new("which")
+        .arg("magick")
         .stdout(Stdio::null())
-        .arg(CONVERT_COMMAND)
         .spawn()
     {
         Ok(cmd) => cmd,
@@ -36,19 +33,20 @@ pub fn run_magick(
     output: &str,
 ) -> crate::error::Result<Vec<PathBuf>> {
     create_doc_dir(output)?;
-    let cmd = std::process::Command::new(CONVERT_COMMAND)
+    let cmd = std::process::Command::new("magick")
         .args(["-density", "400"])
         .arg(format!("{input}[0-100]"))
         .args(["-alpha", "remove"])
         .args(["-quality", "95"])
         .arg(format!("./tmp/{output}/0.jpg"))
         .stdout(Stdio::null())
-        .spawn()?;
+        .output()?;
 
-    let cmd_output = cmd.wait_with_output()?;
-    if !cmd_output.status.success() {
+    if !cmd.status.success() {
         unsafe {
-            return Err(crate::error::Error::Magick(MagickError(String::from_utf8_unchecked(cmd_output.stderr))));
+            return Err(crate::error::Error::Magick(MagickError(
+                String::from_utf8_unchecked(cmd.stderr),
+            )));
         }
     }
     Ok(get_converted_files(output))

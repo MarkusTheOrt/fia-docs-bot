@@ -6,7 +6,7 @@ use aws_sign_v4::AwsSign;
 use chrono::{DateTime, Datelike, Utc};
 use f1_bot_types::{Document, Event, EventStatus, Series};
 use html5ever::{
-    tendril::{fmt::Slice, ByteTendril, ReadExt, SliceExt},
+    tendril::{fmt::Slice, ByteTendril, ReadExt},
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
 };
 use libsql::{params, Connection};
@@ -18,7 +18,7 @@ use std::{
     io::{Read, Write},
     time::UNIX_EPOCH,
 };
-use tracing::{error, info};
+use tracing::info;
 
 const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2024-2043";
 const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/formula-2-championship-44";
@@ -134,12 +134,47 @@ async fn insert_document(
     db_conn
         .execute(
             "INSERT INTO documents (
-    event_id, title, url, mirror, status
+    event_id, title, href, mirror, status
     ) VALUES (?, ?, ?, ?, 'Inserted')",
             params![event_id, title, url, mirror],
         )
         .await?;
     Ok(db_conn.last_insert_rowid())
+}
+
+async fn upload_image(
+    data: Vec<u8>,
+    url: &String,
+) -> crate::error::Result<()> {
+    let data_digest = sha256::digest(data.as_slice());
+    let now = Utc::now();
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert("x-amz-content-sha256", data_digest.parse().unwrap());
+    headers.insert("x-amz-acl", "public-read".parse().unwrap());
+    headers.insert(
+        "X-Amz-Date",
+        now.format("%Y%m%dT%H%M%SZ").to_string().parse().unwrap(),
+    );
+    headers.insert("host", "fia.ort.dev".parse().unwrap());
+    let secret = std::env::var("S3_SECRET_KEY").unwrap();
+    let access = std::env::var("S3_ACCESS_KEY").unwrap();
+    let sign = AwsSign::new(
+        "PUT",
+        url,
+        &now,
+        &headers,
+        "us-east-1",
+        &access,
+        &secret,
+        "s3",
+        Some(&data_digest),
+    );
+    let signature = sign.sign();
+    headers.insert(AUTHORIZATION, signature.parse().unwrap());
+    headers.insert(CONTENT_TYPE, "image/jpeg".parse().unwrap());
+    let client = reqwest::Client::new();
+    client.put(url).headers(headers).body(data).send().await?;
+    Ok(())
 }
 
 async fn runner_internal(
@@ -171,108 +206,40 @@ async fn runner_internal(
             let (file, body) = download_file(&url, &format!("doc_{i}")).await?;
             let mirror =
                 upload_mirror(&title, &real_event.title, year, &body).await?;
-            let inserted_doc = insert_document(
+            let inserted_doc_id = insert_document(
                 db_conn,
                 real_event.id as i64,
-                url,
                 title,
+                url,
                 mirror,
             )
             .await?;
             let files =
                 run_magick(file.to_string_lossy(), &format!("doc_{i}"))?;
+
+            // run_magick takes some time to complete, hence we yield here!
+            tokio::task::yield_now().await;
+
+            for (page_number, path) in files.iter().enumerate() {
+                let mut file = File::open(path)?;
+                let mut buf = Vec::with_capacity(1024 * 1024 * 10);
+                file.read_to_end(&mut buf)?;
+                let url = format!(
+                    "https://fia.ort.dev/img/{}/{}/{}-{}.jpg",
+                    year,
+                    urlencoding::encode(&real_event.title),
+                    inserted_doc_id,
+                    page_number
+                );
+
+                upload_image(buf, &url).await?;
+
+                insert_image(db_conn, inserted_doc_id, page_number, url)
+                    .await?;
+            }
+            mark_doc_done(inserted_doc_id, db_conn).await?;
         }
-
-        //     let files =
-        //         match run_magick(file.to_str().unwrap(), &format!("doc_{i}")) {
-        //             Err(why) => {
-        //                 eprintln!("error running magick: {why}");
-        //                 continue;
-        //             },
-        //             Ok(data) => data,
-        //         };
-
-        //     for (j, path) in files.iter().enumerate() {
-        //         let mut file = match File::open(path) {
-        //             Err(why) => {
-        //                 eprintln!("Error opening file: {why}");
-        //                 continue;
-        //             },
-        //             Ok(data) => data,
-        //         };
-
-        //         // I think 10 Mb is a reasonable size, most docs will be under that.
-        //         let mut buf = Vec::with_capacity(1024 * 1024 * 10);
-        //         match file.read_to_end(&mut buf) {
-        //             Err(why) => {
-        //                 eprintln!("Error reading file: {why}");
-        //                 continue;
-        //             },
-        //             Ok(data) => data,
-        //         };
-        //         let digest = sha256::digest(buf.as_slice());
-
-        //         let url = format!(
-        //             "https://fia.ort.dev/{}/{}/{}-{}.jpg",
-        //             year,
-        //             urlencoding::encode(ev.title.as_ref().unwrap()),
-        //             inserted_doc.id,
-        //             j
-        //         );
-        //         let now = Utc::now();
-        //         let mut headers = reqwest::header::HeaderMap::new();
-        //         headers.insert("x-amz-content-sha256", digest.parse().unwrap());
-        //         headers.insert("x-amz-acl", "public-read".parse().unwrap());
-        //         headers.insert(
-        //             "X-Amz-Date",
-        //             now.format("%Y%m%dT%H%M%SZ").to_string().parse().unwrap(),
-        //         );
-        //         headers.insert("host", "fia.ort.dev".parse().unwrap());
-        //         let secret = std::env::var("S3_SECRET_KEY").unwrap();
-        //         let access = std::env::var("S3_ACCESS_KEY").unwrap();
-        //         let sign = AwsSign::new(
-        //             "PUT",
-        //             &url,
-        //             &now,
-        //             &headers,
-        //             "us-east-1",
-        //             &access,
-        //             &secret,
-        //             "s3",
-        //             Some(&digest),
-        //         );
-        //         let signature = sign.sign();
-        //         headers.insert(AUTHORIZATION, signature.parse().unwrap());
-        //         headers.insert(CONTENT_TYPE, "image/jpeg".parse().unwrap());
-        //         let client = reqwest::Client::new();
-        //         match client.put(&url).headers(headers).body(buf).send().await {
-        //             Ok(data) => match data.error_for_status() {
-        //                 Err(why) => {
-        //                     eprintln!("Uploade Error: {why}");
-        //                 },
-        //                 Ok(_) => {
-        //                     if let Err(why) = insert_image(
-        //                         inserted_doc.id,
-        //                         j as i32,
-        //                         url,
-        //                         db_conn,
-        //                     )
-        //                     .await
-        //                     {
-        //                         eprintln!("Error inserting: {why}")
-        //                     }
-        //                 },
-        //             },
-        //             Err(why) => {
-        //                 eprintln!("Error: {why}");
-        //             },
-        //         }
-        //     }
-        //     _ = mark_doc_done(inserted_doc.id, db_conn).await?;
-        // }
-        // if let Err(why) = clear_tmp_dir() {
-        //     eprintln!("couldn't clear temp dir: {why}");
-        // }
+        clear_tmp_dir()?;
     }
     Ok(())
 }
@@ -292,15 +259,15 @@ async fn mark_doc_done(
 }
 
 async fn insert_image(
-    doc_id: i64,
-    page: i32,
-    url: String,
     db_conn: &Connection,
+    doc_id: i64,
+    page_number: usize,
+    url: String,
 ) -> crate::error::Result {
     db_conn
         .execute(
-            "INSERT INTO images (document_id, url, pagenum) VALUES (?, ?, ?)",
-            params![doc_id, url, page],
+            "INSERT INTO images (document_id, url, page_number) VALUES (?, ?, ?)",
+            params![doc_id, url, page_number as i64],
         )
         .await?;
 
@@ -367,33 +334,6 @@ async fn download_file(
     // ensure we're actually pointing to a legit file.
     path.try_exists()?;
     Ok((path, body.to_vec()))
-}
-
-async fn insert_event(
-    pool: &Connection,
-    year: i32,
-    event: &ParserEvent,
-    series: Series,
-) -> crate::error::Result<Event> {
-    // struct Id {
-    //     id: i64,
-    // }
-
-    // let mut db_event = Event {
-    //     id: None,
-    //     series,
-    //     year: year as i32,
-    //     name: event.title.as_ref().unwrap().clone(),
-    //     created: Utc::now(),
-    // };
-    // let series: String = db_event.series.into();
-    // let res: Id = sqlx::query_as_unchecked!(Id, "INSERT INTO events (series, year, name, created, current, new) VALUES ($1, $2, $3, $4, 0, 1) RETURNING id",
-    // series,
-    // db_event.year,
-    // db_event.name,
-    // db_event.created).fetch_one(pool).await?;
-    // db_event.id = Some(res.id);
-    unimplemented!()
 }
 
 async fn get_season(
