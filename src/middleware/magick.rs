@@ -1,8 +1,8 @@
 use std::{
-    path::{Path, PathBuf},
-    process::Stdio,
-    str::FromStr,
+    borrow::Cow, path::{Path, PathBuf}, process::Stdio, str::FromStr
 };
+
+use crate::error::MagickError;
 
 #[cfg(target_os = "windows")]
 const CONVERT_COMMAND: &str = "magick";
@@ -28,16 +28,14 @@ pub fn check_magick() -> bool {
         },
         _ => return false,
     }
-    return false;
+    false
 }
 
 pub fn run_magick(
-    input: &str,
+    input: Cow<'_, str>,
     output: &str,
-) -> Result<Vec<PathBuf>, String> {
-    if let Err(why) = create_doc_dir(output) {
-        return Err(format!("IO Error: {why}"));
-    }
+) -> crate::error::Result<Vec<PathBuf>> {
+    create_doc_dir(output)?;
     let cmd = std::process::Command::new(CONVERT_COMMAND)
         .args(["-density", "400"])
         .arg(format!("{input}[0-100]"))
@@ -45,24 +43,15 @@ pub fn run_magick(
         .args(["-quality", "95"])
         .arg(format!("./tmp/{output}/0.jpg"))
         .stdout(Stdio::null())
-        .spawn();
+        .spawn()?;
 
-    let cmd = match cmd {
-        Ok(cmd) => cmd,
-        Err(why) => return Err(format!("Error running magick: {why}")),
-    };
-
-    if let Ok(output) = cmd.wait_with_output() {
-        if !output.status.success() {
-            let msg = String::from_utf8(output.stderr);
-            if let Ok(msg) = msg {
-                return Err(msg);
-            } else {
-                return Err("Unknown error occurred running magick.".to_owned());
-            }
+    let cmd_output = cmd.wait_with_output()?;
+    if !cmd_output.status.success() {
+        unsafe {
+            return Err(crate::error::Error::Magick(MagickError(String::from_utf8_unchecked(cmd_output.stderr))));
         }
     }
-    return Ok(get_converted_files(output));
+    Ok(get_converted_files(output))
 }
 
 pub fn get_converted_files(input: &str) -> Vec<PathBuf> {
@@ -83,7 +72,7 @@ pub fn get_converted_files(input: &str) -> Vec<PathBuf> {
         }
         output.push(path);
     }
-    return output;
+    output
 }
 
 pub fn create_tmp_dir() -> Result<(), std::io::Error> {
@@ -91,7 +80,7 @@ pub fn create_tmp_dir() -> Result<(), std::io::Error> {
     if !path.exists() {
         std::fs::create_dir("./tmp")?;
     };
-    return Ok(());
+    Ok(())
 }
 
 pub fn create_doc_dir(filename: &str) -> Result<(), std::io::Error> {
@@ -100,11 +89,11 @@ pub fn create_doc_dir(filename: &str) -> Result<(), std::io::Error> {
     if !path.exists() {
         std::fs::create_dir(pathname)?;
     }
-    return Ok(());
+    Ok(())
 }
 
 pub fn clear_tmp_dir() -> Result<(), std::io::Error> {
     std::fs::remove_dir_all("./tmp/")?;
     create_tmp_dir()?;
-    return Ok(());
+    Ok(())
 }

@@ -29,18 +29,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     drop(dotenvy::dotenv());
 
-    let database = libsql::Builder::new_remote_replica(
-        ":memory:",
+    let database = libsql::Builder::new_remote(
         std::env::var("DATABASE_URL").expect("Database URL not set"),
         std::env::var("DATABASE_TOKEN").expect("Database Token not set"),
     )
-    .sync_interval(Duration::from_secs(30))
     .build()
     .await?;
 
     let db_conn = database.connect()?;
 
-    runner(db_conn).await?;
+    if let Err(why) = runner(db_conn).await {
+        error!("{why:#?}");
+    }
 
     database.sync().await?;
 

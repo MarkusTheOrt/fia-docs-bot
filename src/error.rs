@@ -2,11 +2,32 @@ use std::{convert::Infallible, error::Error as StdError};
 
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
+pub struct MagickError(pub String);
+
+impl StdError for MagickError {
+    fn source(&self) -> Option<&(dyn StdError + 'static)> {
+        None
+    }
+}
+
+impl std::fmt::Debug for MagickError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::fmt::Display for MagickError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 pub enum Error {
     Reqwest(reqwest::Error),
     Libsql(libsql::Error),
     De(serde::de::value::Error),
     Io(std::io::Error),
+    Magick(MagickError),
     Infallible,
 }
 
@@ -17,6 +38,7 @@ impl StdError for Error {
             Self::Libsql(err) => err.source(),
             Self::De(err) => err.source(),
             Self::Io(err) => err.source(),
+            Self::Magick(err) => err.source(),
             Self::Infallible => None,
         }
     }
@@ -32,6 +54,7 @@ impl std::fmt::Debug for Error {
             Self::Libsql(err) => write!(f, "{err}"),
             Self::De(err) => write!(f, "{err}"),
             Self::Io(err) => write!(f, "{err}"),
+            Self::Magick(err) => write!(f, "{err}"),
             Self::Infallible => Ok(()),
         }
     }
@@ -47,6 +70,7 @@ impl std::fmt::Display for Error {
             Self::Libsql(err) => write!(f, "{err}"),
             Self::De(err) => write!(f, "{err}"),
             Self::Io(err) => write!(f, "{err}"),
+            Self::Magick(err) => write!(f, "{err}"),
             Self::Infallible => Ok(()),
         }
     }
@@ -79,5 +103,11 @@ impl From<std::io::Error> for Error {
 impl From<Infallible> for Error {
     fn from(_value: Infallible) -> Self {
         Self::Infallible
+    }
+}
+
+impl From<MagickError> for Error {
+    fn from(value: MagickError) -> Self {
+        Self::Magick(value)
     }
 }

@@ -4,7 +4,7 @@ use super::{
 };
 use aws_sign_v4::AwsSign;
 use chrono::{DateTime, Datelike, Utc};
-use f1_bot_types::{Document, Event, Series};
+use f1_bot_types::{Document, Event, EventStatus, Series};
 use html5ever::{
     tendril::{fmt::Slice, ByteTendril, ReadExt, SliceExt},
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
@@ -43,7 +43,6 @@ impl Default for LocalCache {
 async fn populate_cache(
     db_conn: &Connection,
     cache: &mut LocalCache,
-    series: Series,
     year: i32,
 ) -> crate::error::Result {
     let delta = Utc::now() - cache.last_populated;
@@ -51,12 +50,14 @@ async fn populate_cache(
     if delta.num_days() < 1 {
         return Ok(());
     }
-    let mut docs = db_conn.query("SELECT * FROM documents WHERE series = ? and strftime('%Y', created) = ?", params![series, year],).await?;
-    let mut events = db_conn
+    let mut docs = db_conn
         .query(
-            "SELECT * FROM events WHERE year = ? AND series = ?",
-            params![year, series],
+            "SELECT * FROM documents WHERE strftime('%Y', created_at) = ?",
+            params![year],
         )
+        .await?;
+    let mut events = db_conn
+        .query("SELECT * FROM events WHERE year = ?", params![year])
         .await?;
     cache.documents.clear();
     while let Ok(Some(doc)) = docs.next().await {
@@ -71,44 +72,26 @@ async fn populate_cache(
 }
 
 pub async fn runner(db_conn: Connection) -> crate::error::Result {
-    let mut f1_local_cache = LocalCache::default();
-    let mut f2_local_cache = LocalCache::default();
-    let mut f3_local_cache = LocalCache::default();
+    let mut local_cache = LocalCache::default();
 
     loop {
         let start = Utc::now();
         info!("Scanning for documents.");
         let year = start.year();
-        populate_cache(&db_conn, &mut f1_local_cache, Series::F1, year).await?;
-        populate_cache(&db_conn, &mut f2_local_cache, Series::F2, year).await?;
-        populate_cache(&db_conn, &mut f3_local_cache, Series::F3, year).await?;
+        populate_cache(&db_conn, &mut local_cache, year).await?;
 
-        {
-            runner_internal(
-                &db_conn,
-                year,
-                F1_DOCS_URL,
-                Series::F1,
-                &mut f1_local_cache,
-            )
-            .await;
-            runner_internal(
-                &db_conn,
-                year,
-                F2_DOCS_URL,
-                Series::F2,
-                &mut f2_local_cache,
-            )
-            .await;
-            runner_internal(
-                &db_conn,
-                year,
-                F3_DOCS_URL,
-                Series::F3,
-                &mut f3_local_cache,
-            )
-            .await;
+        for i in Series::F1.i8()..=Series::F3.i8() {
+            let series = Series::from(i);
+            let docs_url = match series {
+                Series::F1 => F1_DOCS_URL,
+                Series::F2 => F2_DOCS_URL,
+                Series::F3 => F3_DOCS_URL,
+                _ => panic!("F1A Not Supported"),
+            };
+            runner_internal(&db_conn, year, docs_url, series, &mut local_cache)
+                .await?;
         }
+
         let runner_time = (Utc::now() - start).to_std().unwrap();
 
         tokio::time::sleep(
@@ -120,6 +103,45 @@ pub async fn runner(db_conn: Connection) -> crate::error::Result {
     }
 }
 
+async fn create_new_event(
+    db_conn: &Connection,
+    series: Series,
+    year: i32,
+    event: &ParserEvent,
+) -> crate::error::Result<Event> {
+    info!("Running 1");
+    let event_title = event.title.as_ref().cloned().unwrap();
+    db_conn.execute("INSERT INTO events (title, year, series, status) VALUES (?, ?, ?, ?)", 
+        params![event_title.clone(), year, series, EventStatus::NotAllowed]).await?;
+    info!("inserted event \"{event_title}\"");
+    Ok(Event {
+        id: db_conn.last_insert_rowid() as u64,
+        title: event_title,
+        year: year as u16,
+        series,
+        status: f1_bot_types::EventStatus::NotAllowed,
+        created_at: Utc::now(),
+    })
+}
+
+async fn insert_document(
+    db_conn: &Connection,
+    event_id: i64,
+    title: String,
+    url: String,
+    mirror: String,
+) -> crate::error::Result<i64> {
+    db_conn
+        .execute(
+            "INSERT INTO documents (
+    event_id, title, url, mirror, status
+    ) VALUES (?, ?, ?, ?, 'Inserted')",
+            params![event_id, title, url, mirror],
+        )
+        .await?;
+    Ok(db_conn.last_insert_rowid())
+}
+
 async fn runner_internal(
     db_conn: &Connection,
     year: i32,
@@ -128,85 +150,39 @@ async fn runner_internal(
     cache: &mut LocalCache,
 ) -> crate::error::Result {
     let season = get_season(url, year).await?;
-    let series_str: String = series.into();
-    for ev in season.events {
+    for ev in season.events.into_iter() {
         let cache_event = cache.events.iter().find(|f| {
             ev.title.as_ref().is_some_and(|t| *t == f.title)
                 && ev.season.is_some_and(|s| s == year)
         });
+        let real_event = match cache_event {
+            Some(db_event) => db_event.to_owned(),
+            None => &create_new_event(db_conn, series, year, &ev).await?,
+        };
 
-        // let db_event: &Event = match cache_event.as_ref() {
-        //     Some(db_event) => db_event,
-        //     None => match sqlx::query_as_unchecked!(
-        //         Event,
-        //         "SELECT id as \"id?\", name, year, created, series FROM events where name = $1 AND year = $2 AND series = $3",
-        //         ev.title,
-        //         year,
-        //         series_str
-        //     )
-        //         .fetch_optional(db_conn)
-        //         .await {
-        //         Ok(Some(db_event)) => {
-        //                 cache.events.push(db_event.clone());
-        //                 db_event
-        //             },
-        //         Ok(None) => {
-        //             cache.events.push(insert_event(db_conn, year, &ev, series).await?);
-        //         },
-        //         Err(why) => {
-        //             error!("sqlx Error: {why}");
-        //             continue;
-        // title            }
-        // };
-        // for (i, doc) in ev.documents.iter().enumerate() {
-        //     if cache.documents.iter().any(|f| {
-        //         return f.url == *doc.url.as_ref().unwrap();
-        //     }) {
-        //         continue;
-        //     }
-        //     println!("doc not found!");
-        //     let (title, url, _) = (
-        //         doc.title.as_ref().unwrap(),
-        //         doc.url.as_ref().unwrap(),
-        //         doc.date.as_ref().unwrap(),
-        //     );
-        //     let (file, body) =
-        //         match download_file(url, &format!("doc_{i}")).await {
-        //             Err(why) => {
-        //                 eprintln!("Download Error: {why}");
-        //                 continue;
-        //             },
-        //             Ok(data) => data,
-        //         };
+        for (i, mut doc) in ev.documents.into_iter().enumerate() {
+            let (title, url) =
+                (doc.title.take().unwrap(), doc.url.take().unwrap());
 
-        //     let mirror_url =
-        //         match upload_mirror(title, &db_event.name, year, &body).await {
-        //             Err(why) => {
-        //                 eprintln!("error uploading mirror doc:{why}");
-        //                 continue;
-        //             },
-        //             Ok(url) => url,
-        //         };
+            if cache.documents.iter().any(|f| f.url == title) {
+                continue;
+            }
 
-        //     let series_str: String = series.into();
-        //     struct Id {
-        //         id: i64,
-        //     }
-        //     let inserted_doc: Id = match sqlx::query_as_unchecked!(Id,
-        //         "INSERT INTO documents (event, url, title, series, mirror) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-        //             db_event.id.as_ref().unwrap(),
-        //             url,
-        //             title,
-        //             series_str,
-        //             mirror_url
-        //         ).fetch_one(db_conn).await {
-        //                 Err(why) => {
-        //                     eprintln!("Error inserting doc: {why}");
-        //                     continue;
-        //                 }
-        //                 Ok(data) => data
-        //             };
-        //     println!("adding doc {title}");
+            let (file, body) = download_file(&url, &format!("doc_{i}")).await?;
+            let mirror =
+                upload_mirror(&title, &real_event.title, year, &body).await?;
+            let inserted_doc = insert_document(
+                db_conn,
+                real_event.id as i64,
+                url,
+                title,
+                mirror,
+            )
+            .await?;
+            let files =
+                run_magick(file.to_string_lossy(), &format!("doc_{i}"))?;
+        }
+
         //     let files =
         //         match run_magick(file.to_str().unwrap(), &format!("doc_{i}")) {
         //             Err(why) => {
@@ -305,13 +281,13 @@ async fn mark_doc_done(
     doc_id: i64,
     db_conn: &Connection,
 ) -> crate::error::Result {
-    // let id = sqlx::query_as!(
-    //     Id,
-    //     "UPDATE documents SET done = 1 WHERE id = $1 RETURNING id",
-    //     doc_id
-    // )
-    // .fetch_one(pool)
-    // .await?;
+    db_conn
+        .execute(
+            "UPDATE documents SET status = 'Done' WHERE id = ?",
+            params![doc_id],
+        )
+        .await?;
+
     Ok(())
 }
 
@@ -319,16 +295,14 @@ async fn insert_image(
     doc_id: i64,
     page: i32,
     url: String,
-    pool: &Connection,
+    db_conn: &Connection,
 ) -> crate::error::Result {
-    // sqlx::query!(
-    //     "INSERT INTO images (document, url, pagenum) VALUES ($1, $2, $3)",
-    //     doc_id,
-    //     url,
-    //     page
-    // )
-    // .execute(pool)
-    // .await?;
+    db_conn
+        .execute(
+            "INSERT INTO images (document_id, url, pagenum) VALUES (?, ?, ?)",
+            params![doc_id, url, page],
+        )
+        .await?;
 
     Ok(())
 }
@@ -430,16 +404,18 @@ async fn get_season(
     let bytes = request.bytes().await?;
     let mut tendril = ByteTendril::new();
     bytes.as_bytes().read_to_tendril(&mut tendril)?;
-    let mut input = BufferQueue::default();
+    let input = BufferQueue::default();
     input.push_back(tendril.try_reinterpret().unwrap());
-    let mut parser_season = RefCell::new(super::parser::Season {
+    let parser_season = RefCell::new(super::parser::Season {
         year,
         events: vec![],
     });
-    let sink = HTMLParser::new(&mut parser_season);
-    let opts = TokenizerOpts::default();
-    let tok = Tokenizer::new(sink, opts);
-    let _ = tok.feed(&mut input);
-    tok.end();
+    {
+        let sink = HTMLParser::new(&parser_season);
+        let opts = TokenizerOpts::default();
+        let tok = Tokenizer::new(sink, opts);
+        let _ = tok.feed(&input);
+        tok.end();
+    }
     Ok(parser_season.into_inner())
 }

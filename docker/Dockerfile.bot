@@ -1,0 +1,19 @@
+FROM rust:alpine AS builder
+
+WORKDIR /app
+
+COPY . ./
+
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static gcc
+
+RUN cargo build --release
+
+FROM rust:alpine
+
+COPY --from=builder /app/target/release/fia-docs-api /app/fia-docs-api
+
+RUN chmod +x /app/fia-docs-api
+
+STOPSIGNAL SIGINT
+
+CMD /app/fia-docs-api

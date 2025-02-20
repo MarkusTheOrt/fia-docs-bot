@@ -4,6 +4,7 @@ use html5ever::{
     tokenizer::{Tag, TagKind::StartTag, Token, TokenSink, TokenSinkResult},
     Attribute,
 };
+use tracing::info;
 
 const BASE_URL: &str = "https://www.fia.com";
 
@@ -55,16 +56,16 @@ impl<'a> HTMLParser<'a> {
     }
 }
 
-fn get_attr<'a>(
+fn get_attr(
     tag: &Tag,
     name: &str,
 ) -> Option<Attribute> {
     let attr =
-        tag.attrs.iter().cloned().find(|f| f.name.local.as_ref() == name);
-    return attr;
+        tag.attrs.iter().find(|f| f.name.local.as_ref() == name).cloned();
+    attr
 }
 
-impl<'a> TokenSink for HTMLParser<'a> {
+impl TokenSink for HTMLParser<'_> {
     type Handle = ();
 
     fn process_token(
@@ -128,15 +129,12 @@ impl<'a> TokenSink for HTMLParser<'a> {
                             _ => return TokenSinkResult::Continue,
                         }
                     },
-                    (StartTag, "span") => match *parser_state {
-                        ParserState::Document => {
-                            if class.as_ref().unwrap().value.as_ref()
-                                == "date-display-single"
-                            {
-                                *parser_state = ParserState::DocumentDate;
-                            }
-                        },
-                        _ => {},
+                    (StartTag, "span") => if let ParserState::Document = *parser_state {
+                        if class.as_ref().unwrap().value.as_ref()
+                            == "date-display-single"
+                        {
+                            *parser_state = ParserState::DocumentDate;
+                        }
                     },
 
                     _ => {},
@@ -144,10 +142,10 @@ impl<'a> TokenSink for HTMLParser<'a> {
             },
             Token::CharacterTokens(chars) => match *parser_state {
                 ParserState::EventTitle => {
-                    if chars.trim().len() == 0 {
+                    if chars.trim().is_empty() {
                         return TokenSinkResult::Continue;
                     }
-                    if let Some(event) = self.event.take() {
+                    if let Some(event) = parser_event.take() {
                         season.events.push(event);
                     }
                     let event = ParserEvent {
@@ -159,7 +157,7 @@ impl<'a> TokenSink for HTMLParser<'a> {
                     *parser_event = Some(event);
                 },
                 ParserState::DocumentTitle => {
-                    if chars.trim().len() == 0 {
+                    if chars.trim().is_empty() {
                         return TokenSinkResult::Continue;
                     }
                     document.as_mut().unwrap().title =
@@ -167,13 +165,13 @@ impl<'a> TokenSink for HTMLParser<'a> {
                     *parser_state = ParserState::Document;
                 },
                 ParserState::DocumentDate => {
-                    if chars.trim().len() == 0 {
+                    if chars.trim().is_empty() {
                         return TokenSinkResult::Continue;
                     }
                     document.as_mut().unwrap().date =
                         Some(chars.trim().to_owned());
                     *parser_state = ParserState::Next;
-                    if let Some(doc) = self.document.take() {
+                    if let Some(doc) = document.take() {
                         parser_event.as_mut().unwrap().documents.push(doc);
                     }
                 },
@@ -181,12 +179,12 @@ impl<'a> TokenSink for HTMLParser<'a> {
                 _ => {},
             },
             Token::EOFToken => {
-                if let Some(event) = self.event.take() {
+                if let Some(event) = parser_event.take() {
                     season.events.push(event);
                 }
             },
             _ => {},
         }
-        return TokenSinkResult::Continue;
+        TokenSinkResult::Continue
     }
 }
