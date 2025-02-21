@@ -4,7 +4,6 @@ use html5ever::{
     tokenizer::{Tag, TagKind::StartTag, Token, TokenSink, TokenSinkResult},
     Attribute,
 };
-use tracing::info;
 
 const BASE_URL: &str = "https://www.fia.com";
 

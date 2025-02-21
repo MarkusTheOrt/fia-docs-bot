@@ -12,7 +12,7 @@ use html5ever::{
 use libsql::{params, Connection};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use std::{
-    cell::RefCell, fs::File, path::PathBuf, str::FromStr, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration
+    cell::RefCell, fs::File, path::PathBuf, str::FromStr, sync::{atomic::{AtomicBool, Ordering}, Arc}
 };
 use std::{
     io::{Read, Write},

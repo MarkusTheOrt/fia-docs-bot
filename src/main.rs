@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let runner_time = Instant::now() - start;
 
         tokio::time::sleep(
-            Duration::from_secs(10)
+            Duration::from_secs(20)
                 .checked_sub(runner_time)
                 .unwrap_or(Duration::from_secs(1)),
         )
