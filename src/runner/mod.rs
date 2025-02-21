@@ -1,16 +1,25 @@
-use std::{error::Error, time::Duration};
+use std::{error::Error, str::FromStr, time::Duration};
 
 use chrono::{DateTime, Utc};
 use f1_bot_types::{Event, EventStatus};
 use libsql::{de, params, Connection};
 use notifbot_macros::notifbot_enum;
-use serenity::all::{
-    ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
-    CreateMessage,
+use serenity::{
+    all::{
+        ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
+        CreateMessage, GuildId,
+    },
+    model::channel,
 };
 use tracing::{error, info};
 
-use crate::database::fetch_events_by_status;
+use crate::{
+    database::{
+        create_new_thread, fetch_events_by_status, fetch_guilds,
+        fetch_thread_for_guild_and_event,
+    },
+    model::guild,
+};
 
 const REQUEST_CHANNEL_ID: u64 = 1338180150906327120;
 
@@ -97,27 +106,55 @@ pub async fn create_discord_allow_request(
 }
 
 pub async fn runner(
-    conn: &Connection,
+    db_conn: &Connection,
     ctx: &Context,
 ) -> Result<(), crate::error::Error> {
     info!("Runner running");
     loop {
         let not_allowed_events =
-            fetch_events_by_status(conn, EventStatus::NotAllowed).await?;
+            fetch_events_by_status(db_conn, EventStatus::NotAllowed).await?;
 
         for event in not_allowed_events.into_iter() {
-            if has_allow_request(conn, &event).await?.is_none() {
-                create_allow_request(conn, &event, ctx).await?;
+            if has_allow_request(db_conn, &event).await?.is_none() {
+                create_allow_request(db_conn, &event, ctx).await?;
             }
         }
 
         let allowed_events =
-            fetch_events_by_status(conn, EventStatus::Allowed).await?;
+            fetch_events_by_status(db_conn, EventStatus::Allowed).await?;
 
+        // TODO: Check for Completed documents in this event, post new documents.
         for event in allowed_events.into_iter() {
             info!("allowed event: {}", event.title);
-            // TODO: Get Thread for event in guilds, create new ones if not already.
-            // TODO: Check for Completed documents in this event, post new documents.
+            for guild in fetch_guilds(db_conn).await? {
+                let (role, channel, use_threads) =
+                    guild.settings_for_series(event.series);
+
+                let Some(channel) = channel else {
+                    continue;
+                };
+
+                let channel_to_post = if use_threads {
+                    channel.to_owned()
+                } else {
+                    match fetch_thread_for_guild_and_event(
+                        db_conn,
+                        guild.id,
+                        event.id as i64,
+                    )
+                    .await?
+                    {
+                        Some(c) => c.discord_id,
+                        None => {
+                            create_new_thread(db_conn, &ctx, &guild, &event)
+                                .await?
+                                .discord_id
+                        },
+                    }
+                };
+
+                let channel_id = ChannelId::new(channel_to_post.parse()?);
+            }
         }
 
         tokio::time::sleep(Duration::from_secs(5)).await;

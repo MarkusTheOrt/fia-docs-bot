@@ -1,10 +1,12 @@
-use std::error::Error as StdErr;
+use std::{error::Error as StdErr, num::ParseIntError};
 
 #[derive(Debug)]
 pub enum Error {
     Serenity(serenity::Error),
     Libsql(libsql::Error),
-    Serde(serde::de::value::Error)
+    Serde(serde::de::value::Error),
+    Io(std::io::Error),
+    ParseInt(ParseIntError),
 }
 use core::result::Result as StdResult;
 
@@ -16,6 +18,8 @@ impl StdErr for Error {
             Error::Serenity(error) => error.source(),
             Error::Libsql(error) => error.source(),
             Error::Serde(error) => error.source(),
+            Error::Io(error) => error.source(),
+            Error::ParseInt(error) => error.source(),
         }
     }
 }
@@ -26,7 +30,21 @@ impl std::fmt::Display for Error {
             Error::Serenity(error) => write!(f, "{error}"),
             Error::Libsql(error) => write!(f, "{error}"),
             Error::Serde(error) => write!(f, "{error}"),
+            Error::Io(error) => write!(f, "{error}"),
+            Error::ParseInt(error) => write!(f, "{error}")
         }
+    }
+}
+
+impl From<ParseIntError> for Error {
+    fn from(value: ParseIntError) -> Self {
+        Self::ParseInt(value)
+    }
+}
+
+impl From<std::io::Error> for Error {
+    fn from(value: std::io::Error) -> Self {
+        Self::Io(value)
     }
 }
 

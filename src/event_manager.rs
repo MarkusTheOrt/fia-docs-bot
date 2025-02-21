@@ -5,6 +5,9 @@ use std::sync::{atomic::AtomicBool, Arc};
 use chrono::Utc;
 use f1_bot_types::EventStatus;
 use libsql::{params, Connection};
+use sentry::protocol::Request;
+use sentry::types::random_uuid;
+use sentry::Level;
 use serenity::all::{
     ComponentInteraction, CreateActionRow, CreateButton,
     CreateInteractionResponseFollowup, EditMessage, Message, UserId,
@@ -163,12 +166,31 @@ pub struct BotEvents {
 }
 
 #[async_trait]
+impl RawEventHandler for BotEvents {
+    async fn raw_event(
+        &self,
+        _ctx: Context,
+        _ev: serenity::all::Event,
+    ) {
+        sentry::capture_event(sentry::protocol::Event {
+            event_id: random_uuid(),
+            request: Some(Request {
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+    }
+}
+
+#[async_trait]
 impl EventHandler for BotEvents {
     async fn ready(
         &self,
         ctx: Context,
         _ready: serenity::all::Ready,
     ) {
+        sentry::metrics::Metric::gauge("guilds", _ready.guilds.len() as f64)
+            .send();
         info!("Starting up!");
 
         let _ = match ctx.http.get_current_application_info().await {

@@ -1,9 +1,12 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use serenity::model::prelude::{ChannelId, GuildId};
 
 #[derive(Serialize, Deserialize)]
 pub struct Thread {
-    pub guild: GuildId,
-    pub event: u64,
-    pub id: ChannelId,
+    pub id: i64,
+    pub discord_id: String,
+    pub channel_id: String,
+    pub event_id: i64,
+    pub guild_id: i64,
+    pub created_at: DateTime<Utc>,
 }

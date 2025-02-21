@@ -11,14 +11,17 @@ use serenity::{
     prelude::*,
 };
 
-use tracing::{error, info};
+use tracing::{error, level_filters::LevelFilter, Level};
+use tracing_subscriber::{
+    layer::SubscriberExt, util::SubscriberInitExt, Layer,
+};
 
 mod commands;
+mod database;
+mod error;
 mod event_manager;
 mod model;
 mod runner;
-mod error;
-mod database;
 
 pub struct ShardManagerBox;
 
@@ -28,22 +31,32 @@ impl TypeMapKey for ShardManagerBox {
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt().init();
-    info!("Logging Enabled!");
     _ = dotenvy::dotenv();
+    let _guard = sentry::init((
+        std::env::var("SENTRY_DSN").expect("Sentry DSR not found!"),
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            traces_sample_rate: 2.0,
+            ..Default::default()
+        },
+    ));
+    tracing_subscriber::registry()
+        .with(sentry::integrations::tracing::layer())
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_filter(LevelFilter::from_level(Level::INFO)),
+        )
+        .init();
     let discord_token =
         std::env::var("DISCORD_TOKEN").expect("Discord token empty");
     let db_token = std::env::var("DATABASE_TOKEN").expect("db_token empty");
     let db_url = std::env::var("DATABASE_URL").expect("Database url empty");
-    let db_client = libsql::Builder::new_remote_replica(
-        "./local.db",
-        db_url,
-        db_token
-    )
-    .sync_interval(Duration::from_secs(60))
-    .build()
-    .await
-    .unwrap();
+    let db_client =
+        libsql::Builder::new_remote_replica("./local.db", db_url, db_token)
+            .sync_interval(Duration::from_secs(60))
+            .build()
+            .await
+            .unwrap();
 
     db_client.sync().await.unwrap();
 
