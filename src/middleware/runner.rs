@@ -4,7 +4,7 @@ use super::{
 };
 use aws_sign_v4::AwsSign;
 use chrono::{DateTime, Datelike, Utc};
-use f1_bot_types::{Document, Event, EventStatus, Series};
+use f1_bot_types::{Document, DocumentStatus, Event, EventStatus, Series};
 use html5ever::{
     tendril::{fmt::Slice, ByteTendril, ReadExt},
     tokenizer::{BufferQueue, Tokenizer, TokenizerOpts},
@@ -12,7 +12,7 @@ use html5ever::{
 use libsql::{params, Connection};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use std::{
-    cell::RefCell, fs::File, path::PathBuf, str::FromStr, time::Duration,
+    cell::RefCell, fs::File, path::PathBuf, str::FromStr, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::Duration
 };
 use std::{
     io::{Read, Write},
@@ -53,7 +53,7 @@ async fn populate_cache(
     let mut docs = db_conn
         .query(
             "SELECT * FROM documents WHERE strftime('%Y', created_at) = ?",
-            params![year],
+            params![year.to_string()],
         )
         .await?;
     let mut events = db_conn
@@ -71,36 +71,31 @@ async fn populate_cache(
     Ok(())
 }
 
-pub async fn runner(db_conn: Connection) -> crate::error::Result {
+pub async fn runner(db_conn: &Connection,
+
+    should_stop: Arc<AtomicBool>
+) -> crate::error::Result {
     let mut local_cache = LocalCache::default();
 
-    loop {
-        let start = Utc::now();
-        info!("Scanning for documents.");
-        let year = start.year();
-        populate_cache(&db_conn, &mut local_cache, year).await?;
+    tokio::task::yield_now().await;
+    let start = Utc::now();
+    info!("Scanning for documents.");
+    let year = start.year();
+    populate_cache(db_conn, &mut local_cache, year).await?;
 
-        for i in Series::F1.i8()..=Series::F3.i8() {
-            let series = Series::from(i);
-            let docs_url = match series {
-                Series::F1 => F1_DOCS_URL,
-                Series::F2 => F2_DOCS_URL,
-                Series::F3 => F3_DOCS_URL,
-                _ => panic!("F1A Not Supported"),
-            };
-            runner_internal(&db_conn, year, docs_url, series, &mut local_cache)
-                .await?;
-        }
-
-        let runner_time = (Utc::now() - start).to_std().unwrap();
-
-        tokio::time::sleep(
-            Duration::from_secs(180)
-                .checked_sub(runner_time)
-                .unwrap_or(Duration::from_secs(1)),
-        )
-        .await;
+    for i in Series::F1.i8()..=Series::F3.i8() {
+        let series = Series::from(i);
+        let docs_url = match series {
+            Series::F1 => F1_DOCS_URL,
+            Series::F2 => F2_DOCS_URL,
+            Series::F3 => F3_DOCS_URL,
+            _ => panic!("F1A Not Supported"),
+        };
+        runner_internal(db_conn, year, docs_url, series, &mut local_cache, should_stop.clone())
+            .await?;
     }
+
+    Ok(())
 }
 
 async fn create_new_event(
@@ -128,15 +123,15 @@ async fn insert_document(
     db_conn: &Connection,
     event_id: i64,
     title: String,
-    url: String,
-    mirror: String,
+    url: &str,
+    mirror: &str,
 ) -> crate::error::Result<i64> {
     db_conn
         .execute(
             "INSERT INTO documents (
     event_id, title, href, mirror, status
-    ) VALUES (?, ?, ?, ?, 'Inserted')",
-            params![event_id, title, url, mirror],
+    ) VALUES (?, ?, ?, ?, ?)",
+            params![event_id, title, url, mirror, DocumentStatus::Initial],
         )
         .await?;
     Ok(db_conn.last_insert_rowid())
@@ -183,9 +178,14 @@ async fn runner_internal(
     url: &str,
     series: Series,
     cache: &mut LocalCache,
+    should_stop: Arc<AtomicBool>
 ) -> crate::error::Result {
     let season = get_season(url, year).await?;
+    
     for ev in season.events.into_iter() {
+        if should_stop.load(Ordering::Relaxed) {
+            break;
+        }
         let cache_event = cache.events.iter().find(|f| {
             ev.title.as_ref().is_some_and(|t| *t == f.title)
                 && ev.season.is_some_and(|s| s == year)
@@ -196,10 +196,12 @@ async fn runner_internal(
         };
 
         for (i, mut doc) in ev.documents.into_iter().enumerate() {
+            if should_stop.load(Ordering::Relaxed) {
+                break;
+            }
             let (title, url) =
                 (doc.title.take().unwrap(), doc.url.take().unwrap());
-
-            if cache.documents.iter().any(|f| f.url == title) {
+            if cache.documents.iter().any(|f| f.href == url) {
                 continue;
             }
 
@@ -210,12 +212,22 @@ async fn runner_internal(
                 db_conn,
                 real_event.id as i64,
                 title,
-                url,
-                mirror,
+                &url,
+                &mirror,
             )
             .await?;
+
+            cache.documents.push(Document {
+                id: inserted_doc_id as u64,
+                event_id: real_event.id,
+                href: url,
+                mirror,
+                status: f1_bot_types::DocumentStatus::Initial,
+                created_at: Utc::now(),
+            });
+
             let files =
-                run_magick(file.to_string_lossy(), &format!("doc_{i}"))?;
+                run_magick(file.to_string_lossy(), &format!("doc_{i}")).await?;
 
             // run_magick takes some time to complete, hence we yield here!
             tokio::task::yield_now().await;
@@ -250,8 +262,8 @@ async fn mark_doc_done(
 ) -> crate::error::Result {
     db_conn
         .execute(
-            "UPDATE documents SET status = 'Done' WHERE id = ?",
-            params![doc_id],
+            "UPDATE documents SET status = ? WHERE id = ?",
+            params![DocumentStatus::ReadyToPost, doc_id],
         )
         .await?;
 

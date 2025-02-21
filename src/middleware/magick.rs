@@ -28,19 +28,25 @@ pub fn check_magick() -> bool {
     false
 }
 
-pub fn run_magick(
+pub async fn run_magick(
     input: Cow<'_, str>,
     output: &str,
 ) -> crate::error::Result<Vec<PathBuf>> {
-    create_doc_dir(output)?;
-    let cmd = std::process::Command::new("magick")
+    
+    let i1 = input.to_string();
+    let o1 = output.to_owned();
+    let cmd = tokio::task::spawn_blocking(move || {
+
+    create_doc_dir(&o1)?;
+    std::process::Command::new("magick")
         .args(["-density", "400"])
-        .arg(format!("{input}[0-100]"))
+        .arg(format!("{i1}[0-100]"))
         .args(["-alpha", "remove"])
         .args(["-quality", "95"])
-        .arg(format!("./tmp/{output}/0.jpg"))
+        .arg(format!("./tmp/{o1}/0.jpg"))
         .stdout(Stdio::null())
-        .output()?;
+        .output()
+    }).await??;
 
     if !cmd.status.success() {
         unsafe {
@@ -49,6 +55,7 @@ pub fn run_magick(
             )));
         }
     }
+    
     Ok(get_converted_files(output))
 }
 

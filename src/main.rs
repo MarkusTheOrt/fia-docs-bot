@@ -1,7 +1,7 @@
-use std::{error::Error, time::Duration};
+use std::{error::Error, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::{Duration, Instant}};
 
 use middleware::magick::check_magick;
-use tracing::error;
+use tracing::{error, info};
 
 use crate::middleware::{
     magick::{clear_tmp_dir, create_tmp_dir},
@@ -37,12 +37,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .await?;
 
     let db_conn = database.connect()?;
+    let should_stop = Arc::new(AtomicBool::new(false));
+    let st1 = should_stop.clone();
+    
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.unwrap();
+        info!("Shutting down.");
+        st1.store(true, Ordering::Relaxed);
+    });
+    
+    loop {
+        let start = Instant::now();
+        if should_stop.load(Ordering::Relaxed) {
+            break;
+        }
 
-    if let Err(why) = runner(db_conn).await {
-        error!("{why:#?}");
+
+        let runner = runner(&db_conn, should_stop.clone());
+        if let Err(why) = runner.await {
+            error!("{why:#?}");
+        }
+
+        let runner_time = Instant::now() - start;
+
+        tokio::time::sleep(
+            Duration::from_secs(10)
+                .checked_sub(runner_time)
+                .unwrap_or(Duration::from_secs(1)),
+        )
+        .await;
     }
 
-    database.sync().await?;
+    //database.sync().await?;
 
     Ok(())
 }

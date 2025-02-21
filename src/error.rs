@@ -1,5 +1,7 @@
 use std::{convert::Infallible, error::Error as StdError};
 
+use tokio::task::JoinError;
+
 pub type Result<T = ()> = core::result::Result<T, Error>;
 
 pub struct MagickError(pub String);
@@ -28,6 +30,7 @@ pub enum Error {
     De(serde::de::value::Error),
     Io(std::io::Error),
     Magick(MagickError),
+    Threading(tokio::task::JoinError),
     Infallible,
 }
 
@@ -39,6 +42,7 @@ impl StdError for Error {
             Self::De(err) => err.source(),
             Self::Io(err) => err.source(),
             Self::Magick(err) => err.source(),
+            Self::Threading(err) => err.source(),
             Self::Infallible => None,
         }
     }
@@ -55,6 +59,7 @@ impl std::fmt::Debug for Error {
             Self::De(err) => write!(f, "{err}"),
             Self::Io(err) => write!(f, "{err}"),
             Self::Magick(err) => write!(f, "{err}"),
+            Self::Threading(err) => write!(f, "{err}"),
             Self::Infallible => Ok(()),
         }
     }
@@ -71,6 +76,7 @@ impl std::fmt::Display for Error {
             Self::De(err) => write!(f, "{err}"),
             Self::Io(err) => write!(f, "{err}"),
             Self::Magick(err) => write!(f, "{err}"),
+            Self::Threading(err) => write!(f, "{err}"),
             Self::Infallible => Ok(()),
         }
     }
@@ -100,14 +106,21 @@ impl From<std::io::Error> for Error {
     }
 }
 
+impl From<MagickError> for Error {
+    fn from(value: MagickError) -> Self {
+        Self::Magick(value)
+    }
+}
+
+impl From<JoinError> for Error {
+    fn from(value: JoinError) -> Self {
+        Self::Threading(value)
+    }
+}
+
 impl From<Infallible> for Error {
     fn from(_value: Infallible) -> Self {
         Self::Infallible
     }
 }
 
-impl From<MagickError> for Error {
-    fn from(value: MagickError) -> Self {
-        Self::Magick(value)
-    }
-}
