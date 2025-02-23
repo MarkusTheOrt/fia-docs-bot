@@ -4,21 +4,15 @@ use chrono::{DateTime, Utc};
 use f1_bot_types::{Event, EventStatus};
 use libsql::{de, params, Connection};
 use notifbot_macros::notifbot_enum;
-use serenity::
-    all::{
-        ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
-        CreateMessage,
-    }
-;
+use serenity::all::{
+    ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
+    CreateMessage,
+};
 use tracing::info;
 
-use crate::
-    database::{
-        create_message, create_new_thread, fetch_docs_for_event,
-        fetch_events_by_status, fetch_guilds, fetch_images_for_document,
-        fetch_thread_for_guild_and_event,
-    }
-;
+use crate::database::{
+    create_message, create_new_thread, fetch_docs_for_event, fetch_events_by_status, fetch_guilds, fetch_images_for_document, fetch_thread_for_guild_and_event, mark_doc_done, mark_event_done
+};
 
 const REQUEST_CHANNEL_ID: u64 = 1338180150906327120;
 
@@ -122,53 +116,77 @@ pub async fn runner(
         let allowed_events =
             fetch_events_by_status(db_conn, EventStatus::Allowed).await?;
 
-        // TODO: Check for Completed documents in this event, post new documents.
+        struct QueuedGuild {
+            channel_to_post: ChannelId,
+            role: Option<String>,
+            event_id: i64,
+        }
+
+        let mut queued_guilds = Vec::new();
         for event in allowed_events.into_iter() {
+            if (Utc::now() - event.created_at).num_days() > 7 {
+                mark_event_done(db_conn, event.id as i64).await?;
+            }
+            for guild in fetch_guilds(db_conn).await? {
+                if guild.discord_id != "883847530687913995" {
+                    continue;
+                }
+
+                let (role, channel, use_threads) =
+                    guild.settings_for_series(event.series);
+
+                let Some(channel) = channel else {
+                    continue;
+                };
+
+                let channel_to_post = if !use_threads {
+                    channel.to_owned()
+                } else {
+                    match fetch_thread_for_guild_and_event(
+                        db_conn,
+                        guild.id,
+                        event.id as i64,
+                    )
+                    .await?
+                    {
+                        Some(c) => c.discord_id,
+                        None => {
+                            create_new_thread(db_conn, &ctx, &guild, &event)
+                                .await?
+                                .discord_id
+                        },
+                    }
+                };
+
+                queued_guilds.push(QueuedGuild {
+                    event_id: event.id as i64,
+                    channel_to_post: ChannelId::new(channel_to_post.parse()?),
+                    role: role.cloned(),
+                });
+            }
+
+
             for document in
                 fetch_docs_for_event(db_conn, event.id as i64).await?
             {
+                mark_doc_done(db_conn, document.id).await?;
                 let images =
-                    fetch_images_for_document(db_conn, document.id)
-                        .await?;
+                    fetch_images_for_document(db_conn, document.id).await?;
                 let message_to_send = create_message(&document, images);
-
-                info!("allowed event: {}", event.title);
-                for guild in fetch_guilds(db_conn).await? {
-                    let (role, channel, use_threads) =
-                        guild.settings_for_series(event.series);
-
-                    let Some(channel) = channel else {
-                        continue;
-                    };
-
-                    let channel_to_post = if use_threads {
-                        channel.to_owned()
-                    } else {
-                        match fetch_thread_for_guild_and_event(
-                            db_conn,
-                            guild.id,
-                            event.id as i64,
-                        )
-                        .await?
-                        {
-                            Some(c) => c.discord_id,
-                            None => {
-                                create_new_thread(db_conn, &ctx, &guild, &event)
-                                    .await?
-                                    .discord_id
-                            },
-                        }
-                    };
-
+                for queued in queued_guilds
+                    .iter()
+                    .filter(|f| f.event_id == document.event_id)
+                {
                     let mut msg = message_to_send.clone();
-                    if let Some(role) = role {
+                    if let Some(role) = &queued.role {
                         msg = msg.content(format!("<@&{role}>"));
                     }
-                    let channel_id = ChannelId::new(channel_to_post.parse()?);
+                    let channel_id = queued.channel_to_post;
                     channel_id.send_message(ctx, msg).await?;
                 }
             }
         }
+        queued_guilds.clear();
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }

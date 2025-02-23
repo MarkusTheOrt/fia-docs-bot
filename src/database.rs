@@ -19,6 +19,7 @@ use serenity::all::{
     AutoArchiveDuration, CacheHttp, ChannelId, ChannelType, CreateEmbed,
     CreateEmbedAuthor, CreateMessage, CreateThread,
 };
+use tracing::info;
 
 pub async fn fetch_events_by_status(
     db_conn: &Connection,
@@ -108,6 +109,7 @@ pub async fn create_new_thread(
             "Invalid Guild Settings",
         )));
     };
+
     let channel_id = ChannelId::new(channel.parse()?);
     let new_thread = channel_id
         .create_thread(
@@ -218,4 +220,30 @@ pub fn create_message(
     }
 
     CreateMessage::new().embeds(return_value)
+}
+
+pub async fn mark_event_done(
+    db_conn: &Connection,
+    event_id: i64,
+) -> Result {
+    db_conn
+        .execute(
+            "UPDATE events SET status = ? WHERE id = ?",
+            params![EventStatus::Posted, event_id],
+        )
+        .await?;
+    Ok(())
+}
+
+pub async fn mark_doc_done(
+    db_conn: &Connection,
+    document_id: i64,
+) -> Result {
+    db_conn
+        .execute(
+            "UPDATE documents SET STATUS = ? WHERE id = ?",
+            params![DocumentStatus::Posted, document_id],
+        )
+        .await?;
+    Ok(())
 }

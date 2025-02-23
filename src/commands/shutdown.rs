@@ -1,10 +1,10 @@
 use serenity::all::{
-    CacheHttp, CommandInteraction, Context, CreateCommand,
+    CommandInteraction, Context, CreateCommand,
     CreateInteractionResponse::Message, CreateInteractionResponseMessage,
-    Permissions, ShardManager,
+    Permissions,
 };
 
-use crate::{event_manager::BotEvents, ShardManagerBox};
+use crate::ShardManagerBox;
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("shutdown")

@@ -1,13 +1,12 @@
 use std::process::exit;
 use std::sync::atomic::Ordering;
-use std::sync::{atomic::AtomicBool, Arc};
+use std::sync::atomic::AtomicBool;
 
 use chrono::Utc;
 use f1_bot_types::EventStatus;
 use libsql::{params, Connection};
 use sentry::protocol::Request;
 use sentry::types::random_uuid;
-use sentry::Level;
 use serenity::all::{
     ComponentInteraction, CreateActionRow, CreateButton,
     CreateInteractionResponseFollowup, EditMessage, Message, UserId,
@@ -15,7 +14,7 @@ use serenity::all::{
 use serenity::{
     all::{
         ActivityType, Guild, GuildId, Interaction, PartialGuild, ResumedEvent,
-        ShardManager, UnavailableGuild,
+        UnavailableGuild,
     },
     async_trait,
     prelude::*,
@@ -25,23 +24,6 @@ use tracing::{error, info};
 
 use crate::commands;
 use crate::runner::{runner, AllowRequestStatus};
-
-#[derive(Clone)]
-pub struct SeriesSettings {
-    pub channel: Option<u64>,
-    pub use_threads: bool,
-    pub role: Option<u64>,
-}
-
-impl Default for SeriesSettings {
-    fn default() -> Self {
-        Self {
-            channel: None,
-            use_threads: true,
-            role: None,
-        }
-    }
-}
 
 pub async fn allow_request(
     db_conn: &Connection,
@@ -150,14 +132,6 @@ pub async fn deny_request(
         .await?;
 
     Ok(())
-}
-
-#[derive(Clone)]
-pub struct CachedGuild {
-    pub id: u64,
-    pub f1: SeriesSettings,
-    pub f2: SeriesSettings,
-    pub f3: SeriesSettings,
 }
 
 pub struct BotEvents {
@@ -359,23 +333,12 @@ impl EventHandler for BotEvents {
         &self,
         _ctx: Context,
         incomplete: UnavailableGuild,
-        full: Option<Guild>,
+        _full: Option<Guild>,
     ) {
         if incomplete.unavailable {
             return;
         }
 
-        let guild = match full {
-            Some(guild) => guild,
-            None => return,
-        };
-        //if let Err(why) =
-        //    sqlx::query!("DELETE FROM guilds WHERE id = ?", guild.id.get())
-        //        .execute(self.db)
-        //        .await
-        //{
-        //    error!("Error removing guild: {why}");
-        //}
     }
 
     async fn resume(
