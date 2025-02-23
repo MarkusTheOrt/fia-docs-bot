@@ -14,7 +14,7 @@ use crate::database::{
     create_message, create_new_thread, fetch_docs_for_event, fetch_events_by_status, fetch_guilds, fetch_images_for_document, fetch_thread_for_guild_and_event, mark_doc_done, mark_event_done
 };
 
-const REQUEST_CHANNEL_ID: u64 = 1338180150906327120;
+const REQUEST_CHANNEL_ID: u64 = 1151509515066421302;
 
 notifbot_enum!(AllowRequestStatus {
     Open,
@@ -128,10 +128,6 @@ pub async fn runner(
                 mark_event_done(db_conn, event.id as i64).await?;
             }
             for guild in fetch_guilds(db_conn).await? {
-                if guild.discord_id != "883847530687913995" {
-                    continue;
-                }
-
                 let (role, channel, use_threads) =
                     guild.settings_for_series(event.series);
 
