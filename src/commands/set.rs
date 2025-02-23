@@ -1,5 +1,4 @@
-use std::sync::{Arc, Mutex};
-
+use f1_bot_types::Series;
 use serenity::{
     all::{
         ChannelType, CommandInteraction,
@@ -14,26 +13,29 @@ use serenity::{
     model::permissions::Permissions,
     prelude::Context,
 };
-use sqlx::{mysql::MySqlQueryResult, MySql, Pool};
 
-use crate::{event_manager::GuildCache, model::series::RacingSeries};
+use libsql::{params, Connection};
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("settings")
         .description("Set up the FIA Documents Bot")
         .default_member_permissions(Permissions::ADMINISTRATOR)
         .set_options(vec![
-            create_option(RacingSeries::F1),
-            create_option(RacingSeries::F2),
-            create_option(RacingSeries::F3),
+            create_option(Series::F1),
+            create_option(Series::F2),
+            create_option(Series::F3),
         ])
 }
 
-fn create_option(series: RacingSeries) -> CreateCommandOption {
-    CreateCommandOption::new(SubCommand, series, "Settings for the series")
-        .add_sub_option(create_thread_option())
-        .add_sub_option(create_channel_option())
-        .add_sub_option(create_role_option())
+fn create_option(series: Series) -> CreateCommandOption {
+    CreateCommandOption::new(
+        SubCommand,
+        series.to_string().to_lowercase(),
+        "Settings for the series",
+    )
+    .add_sub_option(create_thread_option())
+    .add_sub_option(create_channel_option())
+    .add_sub_option(create_role_option())
 }
 
 fn create_channel_option() -> CreateCommandOption {
@@ -67,11 +69,10 @@ fn error_embed(
 }
 
 pub async fn run(
-    pool: &Pool<MySql>,
+    pool: &Connection,
     ctx: &Context,
     cmd: CommandInteraction,
-    cache: &Arc<Mutex<GuildCache>>,
-) -> Result<(), serenity::Error> {
+) -> crate::error::Result {
     if cmd.guild_id.is_none() {
         let builder = CreateInteractionResponse::Message(
             CreateInteractionResponseMessage::new().ephemeral(true).embed(
@@ -92,18 +93,9 @@ pub async fn run(
     if let Some(command) = subcommand {
         if let ResolvedValue::SubCommand(options) = command.value {
             let rv = match command.name {
-                "f1" => {
-                    series_command(RacingSeries::F1, pool, &cmd, options, cache)
-                        .await
-                },
-                "f2" => {
-                    series_command(RacingSeries::F2, pool, &cmd, options, cache)
-                        .await
-                },
-                "f3" => {
-                    series_command(RacingSeries::F3, pool, &cmd, options, cache)
-                        .await
-                },
+                "f1" => series_command(Series::F1, pool, &cmd, options).await,
+                "f2" => series_command(Series::F2, pool, &cmd, options).await,
+                "f3" => series_command(Series::F3, pool, &cmd, options).await,
                 _ => {
                     let builder = CreateInteractionResponseFollowup::new()
                         .ephemeral(true)
@@ -144,11 +136,10 @@ pub async fn run(
 }
 
 async fn series_command<'a>(
-    series: RacingSeries,
-    pool: &Pool<MySql>,
+    series: Series,
+    pool: &Connection,
     cmd: &CommandInteraction,
     options: Vec<ResolvedOption<'_>>,
-    cache: &Arc<Mutex<GuildCache>>,
 ) -> Result<String, String> {
     let options = resolve_options(options);
     if options.is_none() {
@@ -159,22 +150,6 @@ async fn series_command<'a>(
     let role_id = role.map(|role| role.id.get());
 
     let channel_id = channel.map(|channel| channel.id.get());
-    // Write the results into our cache so we don't have to query the database every 5 seconds..u
-    {
-        let mut cache = cache.lock().unwrap();
-        if let Some(guild) =
-            cache.cache.iter_mut().find(|p| p.id == guild.get())
-        {
-            let series = match series {
-                RacingSeries::F1 => &mut guild.f1,
-                RacingSeries::F2 => &mut guild.f2,
-                RacingSeries::F3 => &mut guild.f3,
-            };
-            series.role = role_id;
-            series.channel = channel.map(|channel| channel.id.get());
-            series.use_threads = threads;
-        }
-    }
 
     match series_query(pool, series, channel_id, threads, role_id, guild.get())
         .await
@@ -209,59 +184,34 @@ async fn series_command<'a>(
 }
 
 async fn series_query(
-    pool: &Pool<MySql>,
-    series: RacingSeries,
+    pool: &Connection,
+    series: Series,
     channel: Option<u64>,
     threads: bool,
     role: Option<u64>,
     guild: u64,
-) -> Result<MySqlQueryResult, sqlx::Error> {
+) -> Result<u64, libsql::Error> {
+    let channel = channel.map(|f| f.to_string());
+    let role = role.map(|f| f.to_string());
+    let threads = if threads {
+        1
+    } else {
+        0
+    };
     match series {
-        RacingSeries::F1 => {
-            sqlx::query!(
-                r#"UPDATE guilds
-                   SET f1_channel = ?,
-                   f1_threads = ?,
-                   f1_role = ?
-                   WHERE id = ?"#,
-                channel,
-                threads,
-                role,
-                guild
-            )
-            .execute(pool)
-            .await
+        Series::F1 => {
+            pool.execute("UPDATE guilds SET f1_channel = ?, f1_threads = ?, f1_role = ? where discord_id = ?",
+            params![channel, threads, role, guild]).await
         },
-        RacingSeries::F2 => {
-            sqlx::query!(
-                r#"UPDATE guilds
-                   SET f2_channel = ?,
-                   f2_threads = ?,
-                   f2_role = ?
-                   WHERE id = ?"#,
-                channel,
-                threads,
-                role,
-                guild
-            )
-            .execute(pool)
-            .await
+        Series::F2 => {
+            pool.execute("UPDATE guilds SET f2_channel = ?, f2_threads = ?, f2_role = ? where discord_id = ?",
+            params![channel, threads, role, guild]).await
         },
-        RacingSeries::F3 => {
-            sqlx::query!(
-                r#"UPDATE guilds
-                   SET f3_channel = ?,
-                   f3_threads = ?,
-                   f3_role = ?
-                   WHERE id = ?"#,
-                channel,
-                threads,
-                role,
-                guild
-            )
-            .execute(pool)
-            .await
+        Series::F3 => {
+            pool.execute("UPDATE guilds SET f3_channel = ?, f3_threads = ?, f3_role = ? where discord_id = ?",
+            params![channel, threads, role, guild]).await
         },
+        _ => panic!("F1Academy not Supported!")
     }
 }
 

@@ -1,68 +1,43 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use serenity::model::prelude::{Guild, PartialGuild};
-use sqlx::{MySql, Pool};
-use std::sync::{Arc, Mutex};
+use f1_bot_types::Series;
 
-use crate::event_manager::{CachedGuild, GuildCache, SeriesSettings};
 
-#[derive(Serialize, Deserialize)]
-pub struct DbGuild {
-    pub id: u64,
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+pub struct Guild {
+    pub id: i64,
+    pub discord_id: String,
     pub name: String,
-    pub channel: Option<u64>,
-    pub notify_role: Option<u64>,
-    pub joined: DateTime<Utc>,
+    pub f1_role: Option<String>,
+    pub f1_channel: Option<String>,
+    pub f1_threads: bool,
+    pub f2_role: Option<String>,
+    pub f2_channel: Option<String>,
+    pub f2_threads: bool,
+    pub f3_role: Option<String>,
+    pub f3_channel: Option<String>,
+    pub f3_threads: bool,
+    pub joined_at: DateTime<Utc>,
 }
 
-pub async fn insert_new_guild(
-    guild: &Guild,
-    pool: &Pool<MySql>,
-    guild_cache: &Arc<Mutex<GuildCache>>,
-) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
-    let new_guild = DbGuild {
-        id: guild.id.get(),
-        name: guild.name.clone(),
-        channel: None,
-        notify_role: None,
-        joined: Utc::now(),
-    };
-
-    {
-        let mut cache = guild_cache.lock().unwrap();
-        match cache.cache.iter_mut().find(|p| p.id == guild.id.get()) {
-            Some(_) => {},
-            None => {
-                cache.cache.push(CachedGuild {
-                    id: guild.id.get(),
-                    f1: SeriesSettings::default(),
-                    f2: SeriesSettings::default(),
-                    f3: SeriesSettings::default(),
-                });
-            },
+impl Guild {
+    
+    pub fn settings_for_series(&self, series: Series) -> (Option<&String>, Option<&String>, bool) {
+        match series {
+            Series::F1 => self.f1_settings(),
+            Series::F2 => self.f2_settings(),
+            Series::F3 => self.f3_settings(),
+            Series::F1Academy => panic!("F1 Academy unsupported!"),
         }
     }
 
-    sqlx::query!(
-        "INSERT INTO guilds(id, name, joined) VALUES (?, ?, ?) ON DUPLICATE KEY update name = ?",
-        new_guild.id,
-        new_guild.name,
-        new_guild.joined,
-        new_guild.name
-    )
-    .execute(pool)
-    .await
-}
-
-pub async fn update_guild_name(
-    guild: &PartialGuild,
-    pool: &Pool<MySql>,
-) -> Result<sqlx::mysql::MySqlQueryResult, sqlx::Error> {
-    sqlx::query!(
-        "UPDATE guilds SET name = ? WHERE id = ?",
-        guild.name,
-        guild.id.get()
-    )
-    .execute(pool)
-    .await
+    pub fn f1_settings(&self) -> (Option<&String>, Option<&String>, bool) {
+        (self.f1_role.as_ref(), self.f1_channel.as_ref(), self.f1_threads)
+    } 
+    pub fn f2_settings(&self) -> (Option<&String>, Option<&String>, bool) {
+        (self.f2_role.as_ref(), self.f2_channel.as_ref(), self.f2_threads)
+    } 
+    pub fn f3_settings(&self) -> (Option<&String>, Option<&String>, bool) {
+        (self.f3_role.as_ref(), self.f3_channel.as_ref(), self.f3_threads)
+    } 
 }

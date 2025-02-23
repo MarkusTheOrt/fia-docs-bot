@@ -1,0 +1,21 @@
+services:
+  libsql-database:
+    image: ghcr.io/tursodatabase/libsql-server:latest
+    ports:
+        - 8080:8080
+        - 5001:5001
+    volumes:
+        - ./data/libsql:/var/lib/sqld
+    container_name: database
+    env_file:
+        - ./.db.env
+  libsql-client:
+    container_name: db-ui
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.dbclient
+    ports:
+      - 3001:3000
+    depends_on:
+      - libsql-database
+
