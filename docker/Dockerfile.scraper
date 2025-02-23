@@ -8,9 +8,11 @@ RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static gcc
 
 RUN cargo build --release
 
-FROM rust:alpine
+FROM alpine:latest
 
 COPY --from=builder /app/target/release/fia-docs-api /app/fia-docs-api
+
+RUN apk add --no-cache imagemagick ghostscript
 
 RUN chmod +x /app/fia-docs-api
 

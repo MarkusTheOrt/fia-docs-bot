@@ -1,0 +1,12 @@
+services:
+  discord-bot:
+    container_name: fia-docs-scraper
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile.scraper
+    env_file: ./.env
+    environment:
+      - DATABASE_URL=http://database:8080
+    #depends_on:
+      #  - libsql-database
