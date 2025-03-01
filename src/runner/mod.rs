@@ -8,10 +8,12 @@ use serenity::all::{
     ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
     CreateMessage,
 };
-use tracing::info;
+use tracing::{info, Level};
 
 use crate::database::{
-    create_message, create_new_thread, fetch_docs_for_event, fetch_events_by_status, fetch_guilds, fetch_images_for_document, fetch_thread_for_guild_and_event, mark_doc_done, mark_event_done
+    create_message, create_new_thread, fetch_docs_for_event,
+    fetch_events_by_status, fetch_guilds, fetch_images_for_document,
+    fetch_thread_for_guild_and_event, mark_doc_done, mark_event_done,
 };
 
 const REQUEST_CHANNEL_ID: u64 = 1151509515066421302;
@@ -104,6 +106,8 @@ pub async fn runner(
 ) -> Result<(), crate::error::Error> {
     info!("Runner running");
     loop {
+        let runner_span = tracing::span!(Level::INFO, "Runner");
+        let sguard = runner_span.enter();
         let not_allowed_events =
             fetch_events_by_status(db_conn, EventStatus::NotAllowed).await?;
 
@@ -147,9 +151,14 @@ pub async fn runner(
                     {
                         Some(c) => c.discord_id,
                         None => {
-                            create_new_thread(db_conn, &ctx, &guild, &event)
-                                .await?
-                                .discord_id
+                            if let Ok(thread) =
+                                create_new_thread(db_conn, &ctx, &guild, &event)
+                                    .await
+                            {
+                                thread.discord_id
+                            } else {
+                                continue;
+                            }
                         },
                     }
                 };
@@ -160,8 +169,7 @@ pub async fn runner(
                     role: role.cloned(),
                 });
             }
-
-
+            let posting_span = tracing::info_span!("Posting Documents");
             for document in
                 fetch_docs_for_event(db_conn, event.id as i64).await?
             {
@@ -173,16 +181,18 @@ pub async fn runner(
                     .iter()
                     .filter(|f| f.event_id == document.event_id)
                 {
+                    let _guard = posting_span.enter();
                     let mut msg = message_to_send.clone();
                     if let Some(role) = &queued.role {
                         msg = msg.content(format!("<@&{role}>"));
                     }
                     let channel_id = queued.channel_to_post;
-                    channel_id.send_message(ctx, msg).await?;
+                    let _ = channel_id.send_message(ctx, msg).await;
                 }
             }
         }
         queued_guilds.clear();
+        drop(sguard);
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }

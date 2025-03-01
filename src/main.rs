@@ -32,11 +32,11 @@ impl TypeMapKey for ShardManagerBox {
 #[tokio::main]
 async fn main() {
     _ = dotenvy::dotenv();
-    let _guard = sentry::init((
+    let guard = sentry::init((
         std::env::var("SENTRY_DSN").expect("Sentry DSR not found!"),
         sentry::ClientOptions {
             release: sentry::release_name!(),
-            traces_sample_rate: 2.0,
+            traces_sample_rate: 1.0,
             ..Default::default()
         },
     ));
@@ -102,4 +102,5 @@ async fn main() {
     if let Err(why) = db_client.sync().await {
         error!("Error syncing Database: {why:#?}");
     }
+    drop(guard);
 }
