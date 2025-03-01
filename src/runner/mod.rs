@@ -4,11 +4,12 @@ use chrono::{DateTime, Utc};
 use f1_bot_types::{Event, EventStatus};
 use libsql::{de, params, Connection};
 use notifbot_macros::notifbot_enum;
+use sentry::User;
 use serenity::all::{
     ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
     CreateMessage,
 };
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 
 use crate::database::{
     create_message, create_new_thread, fetch_docs_for_event,
@@ -34,6 +35,7 @@ pub struct AllowRequest {
     approved_at: Option<DateTime<Utc>>,
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn has_allow_request(
     db_conn: &Connection,
     event: &Event,
@@ -47,6 +49,7 @@ pub async fn has_allow_request(
     })
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn create_allow_request(
     db_conn: &Connection,
     event: &Event,
@@ -70,6 +73,7 @@ pub async fn create_allow_request(
     })
 }
 
+#[tracing::instrument]
 pub async fn create_discord_allow_request(
     ctx: &Context,
     event: &Event,
@@ -106,7 +110,7 @@ pub async fn runner(
 ) -> Result<(), crate::error::Error> {
     info!("Runner running");
     loop {
-        let runner_span = tracing::span!(Level::INFO, "Runner");
+        let runner_span = tracing::span!(Level::INFO, "runner");
         let sguard = runner_span.enter();
         let not_allowed_events =
             fetch_events_by_status(db_conn, EventStatus::NotAllowed).await?;
@@ -121,6 +125,7 @@ pub async fn runner(
             fetch_events_by_status(db_conn, EventStatus::Allowed).await?;
 
         struct QueuedGuild {
+            guild_id: String,
             channel_to_post: ChannelId,
             role: Option<String>,
             event_id: i64,
@@ -131,14 +136,13 @@ pub async fn runner(
             if (Utc::now() - event.created_at).num_days() > 7 {
                 mark_event_done(db_conn, event.id as i64).await?;
             }
-            for guild in fetch_guilds(db_conn).await? {
+            for guild in tokio::task::unconstrained(fetch_guilds(db_conn)).await? {
                 let (role, channel, use_threads) =
                     guild.settings_for_series(event.series);
 
                 let Some(channel) = channel else {
                     continue;
                 };
-
                 let channel_to_post = if !use_threads {
                     channel.to_owned()
                 } else {
@@ -164,12 +168,12 @@ pub async fn runner(
                 };
 
                 queued_guilds.push(QueuedGuild {
+                    guild_id: guild.discord_id.to_owned(),
                     event_id: event.id as i64,
                     channel_to_post: ChannelId::new(channel_to_post.parse()?),
                     role: role.cloned(),
                 });
             }
-            let posting_span = tracing::info_span!("Posting Documents");
             for document in
                 fetch_docs_for_event(db_conn, event.id as i64).await?
             {
@@ -181,13 +185,28 @@ pub async fn runner(
                     .iter()
                     .filter(|f| f.event_id == document.event_id)
                 {
-                    let _guard = posting_span.enter();
+                    let hub = sentry::Hub::new_from_top(sentry::Hub::current());
+                    let _guard = hub.push_scope();
+                    hub.configure_scope(|scope| {
+                        scope.set_user(Some(User {
+                            id: Some(queued.guild_id.to_string()),
+                            ..Default::default()
+                        }))
+                    });
+
                     let mut msg = message_to_send.clone();
                     if let Some(role) = &queued.role {
                         msg = msg.content(format!("<@&{role}>"));
                     }
                     let channel_id = queued.channel_to_post;
-                    let _ = channel_id.send_message(ctx, msg).await;
+                    if let Err(why) = channel_id.send_message(ctx, msg).await {
+                        error!(
+                            guild_id = queued.guild_id.clone(),
+                            document_id = document.id,
+                            document_title = document.title.clone(),
+                            "{why}"
+                        );
+                    }
                 }
             }
         }

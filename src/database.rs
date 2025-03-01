@@ -21,6 +21,7 @@ use serenity::all::{
 };
 use tracing::info;
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn fetch_events_by_status(
     db_conn: &Connection,
     status: EventStatus,
@@ -40,6 +41,7 @@ pub async fn fetch_events_by_status(
     Ok(return_value)
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn get_event_by_id(
     db_conn: &Connection,
     id: u64,
@@ -53,6 +55,7 @@ pub async fn get_event_by_id(
         .map_err(|e| e.into())
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn update_event_status(
     db_conn: &Connection,
     event: &Event,
@@ -67,6 +70,7 @@ pub async fn update_event_status(
     Ok(())
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn fetch_guilds(db_conn: &Connection) -> Result<Vec<Guild>> {
     let mut cursor = db_conn.query("SELECT * FROM guilds", ()).await?;
     let mut return_value = vec![];
@@ -77,6 +81,7 @@ pub async fn fetch_guilds(db_conn: &Connection) -> Result<Vec<Guild>> {
     Ok(return_value)
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn fetch_thread_for_guild_and_event(
     db_conn: &Connection,
     guild_id: i64,
@@ -96,6 +101,7 @@ pub async fn fetch_thread_for_guild_and_event(
     }
 }
 
+#[tracing::instrument(skip(db_conn, http))]
 pub async fn create_new_thread(
     db_conn: &Connection,
     http: impl CacheHttp,
@@ -143,6 +149,7 @@ pub async fn create_new_thread(
     })
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn insert_new_thread(
     db_conn: &Connection,
     discord_id: &str,
@@ -161,6 +168,7 @@ pub async fn insert_new_thread(
     Ok(db_conn.last_insert_rowid())
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn fetch_docs_for_event(
     db_conn: &Connection,
     event_id: i64,
@@ -180,6 +188,7 @@ pub async fn fetch_docs_for_event(
     Ok(return_value)
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn fetch_images_for_document(
     db_conn: &Connection,
     document_id: i64,
@@ -222,6 +231,7 @@ pub fn create_message(
     CreateMessage::new().embeds(return_value)
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn mark_event_done(
     db_conn: &Connection,
     event_id: i64,
@@ -235,6 +245,7 @@ pub async fn mark_event_done(
     Ok(())
 }
 
+#[tracing::instrument(skip(db_conn))]
 pub async fn mark_doc_done(
     db_conn: &Connection,
     document_id: i64,

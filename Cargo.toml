@@ -13,6 +13,12 @@ path = "src/main.rs"
 [[bin]]
 name = "docker-build"
 path = "tools/docker-build.rs"
+alias = "db"
+
+[[bin]]
+name = "docker-push"
+path = "tools/docker-push.rs"
+alias = "dp"
 
 [dependencies]
 anyhow = "1.0.95"
