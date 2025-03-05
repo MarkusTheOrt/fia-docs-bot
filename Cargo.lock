@@ -608,6 +608,7 @@ dependencies = [
  "notifbot-macros",
  "sentry",
  "serde",
+ "serde_json",
  "serenity",
  "tokio",
  "tracing",

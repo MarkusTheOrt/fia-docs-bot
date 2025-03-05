@@ -19,7 +19,7 @@ use serenity::all::{
     AutoArchiveDuration, CacheHttp, ChannelId, ChannelType, CreateEmbed,
     CreateEmbedAuthor, CreateMessage, CreateThread,
 };
-use tracing::info;
+use tracing::{info, Instrument};
 
 #[tracing::instrument(skip(db_conn))]
 pub async fn fetch_events_by_status(

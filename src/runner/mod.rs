@@ -4,12 +4,17 @@ use chrono::{DateTime, Utc};
 use f1_bot_types::{Event, EventStatus};
 use libsql::{de, params, Connection};
 use notifbot_macros::notifbot_enum;
-use sentry::User;
-use serenity::all::{
-    ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
-    CreateMessage,
+use sentry::{
+    protocol::{SpanStatus, Value},
+    TransactionContext, User,
 };
-use tracing::{error, info, Level};
+use serenity::
+    all::{
+        ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
+        CreateMessage,
+    }
+;
+use tracing::{error, info};
 
 use crate::database::{
     create_message, create_new_thread, fetch_docs_for_event,
@@ -83,10 +88,11 @@ pub async fn create_discord_allow_request(
         .send_message(
             ctx,
             CreateMessage::new()
+                .content("<@142951266811641856> & <@&738665034359767060>")
                 .embed(
                     CreateEmbed::new().title("New Event Found!").description(
                         format!(
-                            "## {} {} {}\n\nPlease allow or deny.",
+                            "## {} {} {}\n\nPlease allow or deny.\n\nEvent Information: ```ron{event:#?}```",
                             event.year, event.series, event.title,
                         ),
                     ),
@@ -110,19 +116,34 @@ pub async fn runner(
 ) -> Result<(), crate::error::Error> {
     info!("Runner running");
     loop {
-        let runner_span = tracing::span!(Level::INFO, "runner");
-        let sguard = runner_span.enter();
+        let transaction = sentry::start_transaction(TransactionContext::new(
+            "runner",
+            "main-task",
+        ));
+
+        let child = transaction.start_child("db", "fetch_events");
+        child.set_data("status", Value::String(EventStatus::NotAllowed.into()));
         let not_allowed_events =
             fetch_events_by_status(db_conn, EventStatus::NotAllowed).await?;
 
+        child.set_status(SpanStatus::Ok);
+        child.finish();
+
+        let span = transaction.start_child("main-task", "allow_requests");
         for event in not_allowed_events.into_iter() {
             if has_allow_request(db_conn, &event).await?.is_none() {
                 create_allow_request(db_conn, &event, ctx).await?;
             }
         }
+        span.set_status(SpanStatus::Ok);
+        span.finish();
 
+        let span = transaction.start_child("db", "fetch_events");
+        span.set_data("status", Value::String(EventStatus::Allowed.into()));
         let allowed_events =
             fetch_events_by_status(db_conn, EventStatus::Allowed).await?;
+        span.set_status(SpanStatus::Ok);
+        span.finish();
 
         struct QueuedGuild {
             guild_id: String,
@@ -133,10 +154,17 @@ pub async fn runner(
 
         let mut queued_guilds = Vec::new();
         for event in allowed_events.into_iter() {
+            let span = transaction.start_child("main-task", "handle_event");
+            span.set_data("event", serde_json::to_value(&event).unwrap());
             if (Utc::now() - event.created_at).num_days() > 7 {
                 mark_event_done(db_conn, event.id as i64).await?;
             }
-            for guild in tokio::task::unconstrained(fetch_guilds(db_conn)).await? {
+            
+            for guild in
+                tokio::task::unconstrained(fetch_guilds(db_conn)).await?
+            {
+                let gspan = span.start_child("main-task", "handle_guild");
+                gspan.set_data("guild", serde_json::to_value(&guild).unwrap());
                 let (role, channel, use_threads) =
                     guild.settings_for_series(event.series);
 
@@ -173,10 +201,14 @@ pub async fn runner(
                     channel_to_post: ChannelId::new(channel_to_post.parse()?),
                     role: role.cloned(),
                 });
+                gspan.set_status(SpanStatus::Ok);
+                gspan.finish();
             }
             for document in
                 fetch_docs_for_event(db_conn, event.id as i64).await?
             {
+                let dspan = span.start_child("main-task", "handle_document");
+                dspan.set_data("document", serde_json::to_value(&document).unwrap());
                 mark_doc_done(db_conn, document.id).await?;
                 let images =
                     fetch_images_for_document(db_conn, document.id).await?;
@@ -200,6 +232,7 @@ pub async fn runner(
                     }
                     let channel_id = queued.channel_to_post;
                     if let Err(why) = channel_id.send_message(ctx, msg).await {
+                        hub.capture_error(&why);
                         error!(
                             guild_id = queued.guild_id.clone(),
                             document_id = document.id,
@@ -207,11 +240,17 @@ pub async fn runner(
                             "{why}"
                         );
                     }
+                    
                 }
+                dspan.set_status(SpanStatus::Ok);
+                dspan.finish();
             }
+            span.set_status(SpanStatus::Ok);
+            span.finish();
         }
+        transaction.set_status(SpanStatus::Ok);
+        transaction.finish();
         queued_guilds.clear();
-        drop(sguard);
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }

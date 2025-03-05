@@ -140,23 +140,6 @@ pub struct BotEvents {
 }
 
 #[async_trait]
-impl RawEventHandler for BotEvents {
-    async fn raw_event(
-        &self,
-        _ctx: Context,
-        _ev: serenity::all::Event,
-    ) {
-        sentry::capture_event(sentry::protocol::Event {
-            event_id: random_uuid(),
-            request: Some(Request {
-                ..Default::default()
-            }),
-            ..Default::default()
-        });
-    }
-}
-
-#[async_trait]
 impl EventHandler for BotEvents {
     async fn ready(
         &self,
