@@ -5,8 +5,6 @@ use std::sync::atomic::AtomicBool;
 use chrono::Utc;
 use f1_bot_types::EventStatus;
 use libsql::{params, Connection};
-use sentry::protocol::Request;
-use sentry::types::random_uuid;
 use serenity::all::{
     ComponentInteraction, CreateActionRow, CreateButton,
     CreateInteractionResponseFollowup, EditMessage, Message, UserId,
@@ -190,6 +188,7 @@ impl EventHandler for BotEvents {
         if !self.thread_lock.load(Ordering::Relaxed) {
             self.thread_lock.store(true, Ordering::Relaxed);
             if let Err(why) = runner(self.conn, &ctx.clone()).await {
+                sentry::capture_error(&why);
                 error!("{why:#?}");
             }
         }

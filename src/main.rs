@@ -32,13 +32,14 @@ impl TypeMapKey for ShardManagerBox {
 fn main() {
     _ = dotenvy::dotenv();
     let guard = sentry::init((
-        std::env::var("SENTRY_DSN").expect("Sentry DSR not found!"),
+        std::env::var("SENTRY_DSN").expect("Sentry DSN not found!"),
         sentry::ClientOptions {
             release: sentry::release_name!(),
             traces_sample_rate: 1.0,
             ..Default::default()
         },
     ));
+    sentry::start_session();
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -113,5 +114,6 @@ fn main() {
                 error!("Error syncing Database: {why:#?}");
             }
         });
+    sentry::end_session();
     drop(guard);
 }
