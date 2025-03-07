@@ -1,10 +1,12 @@
 use std::process::exit;
-use std::sync::atomic::Ordering;
 use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
 
 use chrono::Utc;
 use f1_bot_types::EventStatus;
 use libsql::{params, Connection};
+use sentry::Hub;
+use sentry::TransactionContext;
 use serenity::all::{
     ComponentInteraction, CreateActionRow, CreateButton,
     CreateInteractionResponseFollowup, EditMessage, Message, UserId,
@@ -144,26 +146,39 @@ impl EventHandler for BotEvents {
         ctx: Context,
         _ready: serenity::all::Ready,
     ) {
+        let tx = sentry::start_transaction(TransactionContext::new(
+            "ready", "discord",
+        ));
+
         sentry::metrics::Metric::gauge("guilds", _ready.guilds.len() as f64)
             .send();
         info!("Starting up!");
 
+        let span = tx.start_child("discord", "Get Application Info");
         let _ = match ctx.http.get_current_application_info().await {
             Ok(res) => res,
             Err(why) => {
+                sentry::capture_error(&why);
                 error!("error receiving Application Info: {why}");
+                span.finish();
                 exit(0x0100);
             },
         };
+        span.finish();
 
+        let span = tx.start_child("discord", "Get Bot Userinfo");
         let user = match ctx.http().get_current_user().await {
             Ok(data) => data,
             Err(why) => {
+                sentry::capture_error(&why);
                 error!("error reciving app user: {why}");
+                span.finish();
                 exit(0x0100);
             },
         };
+        span.finish();
 
+        let span = tx.start_child("discord", "Create Control-guild Commands");
         if let Err(why) = ctx
             .http
             .create_guild_command(
@@ -172,6 +187,7 @@ impl EventHandler for BotEvents {
             )
             .await
         {
+            sentry::capture_error(&why);
             error!("Error creating sync command: {why:#?}");
         }
         if let Err(why) = ctx
@@ -182,8 +198,12 @@ impl EventHandler for BotEvents {
             )
             .await
         {
+            sentry::capture_error(&why);
             error!("Error creating sync command: {why:#?}");
         }
+        span.finish();
+        tx.set_status(sentry::protocol::SpanStatus::Ok);
+        tx.finish();
 
         if !self.thread_lock.load(Ordering::Relaxed) {
             self.thread_lock.store(true, Ordering::Relaxed);
@@ -194,8 +214,8 @@ impl EventHandler for BotEvents {
         }
 
         ctx.set_activity(Some(serenity::gateway::ActivityData {
-            name: "FIA Documents".to_owned(),
-            kind: ActivityType::Listening,
+            name: "Watching out for FIA Docs".to_owned(),
+            kind: ActivityType::Custom,
             url: None,
             state: None,
         }));
@@ -220,13 +240,30 @@ impl EventHandler for BotEvents {
         ctx: Context,
         interaction: Interaction,
     ) {
+        let tx = sentry::start_transaction(TransactionContext::new(
+            "interaction-create",
+            "discord",
+        ));
+
+        let hub = Hub::new_from_top(Hub::current());
+        tx.set_data("interaction", serde_json::to_value(&interaction).unwrap());
         match interaction {
             Interaction::Component(cmd) => {
+                hub.configure_scope(|scope| {
+                    scope.set_user(Some(sentry::User {
+                        id: cmd.guild_id.map(|f| f.to_string()),
+                        username: Some(format!(
+                            "{} ({})",
+                            cmd.user.name,
+                            cmd.user.global_name.clone().unwrap_or_default()
+                        )),
+                        ..Default::default()
+                    }))
+                });
                 let Some((kind, id)) = cmd.data.custom_id.split_once("-")
                 else {
                     return;
                 };
-                info!("kind: {kind}; Id: {id}");
                 match match kind {
                     "allow" => {
                         allow_request(self.conn, id.parse().unwrap(), cmd, &ctx)
@@ -238,9 +275,15 @@ impl EventHandler for BotEvents {
                     },
                     _ => Ok(()),
                 } {
-                    Ok(_) => {},
+                    Ok(_) => {
+                        tx.set_status(sentry::protocol::SpanStatus::Ok);
+                        tx.finish();
+                    },
                     Err(why) => {
+                        tx.set_status(sentry::protocol::SpanStatus::Cancelled);
+                        hub.capture_error(&why);
                         error!("Interaction Error: {why:#?}");
+                        tx.finish();
                     },
                 }
             },
@@ -256,7 +299,13 @@ impl EventHandler for BotEvents {
                     },
                     _ => Ok(()),
                 } {
-                    error!("cmd error: {why}")
+                    tx.set_status(sentry::protocol::SpanStatus::Cancelled);
+                    hub.capture_error(&why);
+                    error!("cmd error: {why}");
+                    tx.finish();
+                } else {
+                    tx.set_status(sentry::protocol::SpanStatus::Ok);
+                    tx.finish();
                 }
             },
             _ => {},
@@ -273,6 +322,11 @@ impl EventHandler for BotEvents {
             None | Some(false) => return,
             Some(true) => {},
         }
+        let tx = sentry::start_transaction(TransactionContext::new(
+            "guild-create",
+            "discord",
+        ));
+        let span = tx.start_child("db", "Insert new Guild");
         if let Err(why) = self
             .conn
             .execute(
@@ -289,16 +343,30 @@ impl EventHandler for BotEvents {
             )
             .await
         {
+            sentry::capture_error(&why);
             error!("{why}");
         }
+        span.finish();
+        tx.set_status(sentry::protocol::SpanStatus::Ok);
+        tx.finish();
     }
 
     async fn guild_update(
         &self,
         _ctx: Context,
-        _old: Option<Guild>,
+        old: Option<Guild>,
         new_incomplete: PartialGuild,
     ) {
+        let tx = sentry::start_transaction(TransactionContext::new(
+            "guild-update",
+            "discord",
+        ));
+        if let Some(guild) = old {
+            tx.set_data("old_guild", serde_json::to_value(&guild).unwrap());
+        }
+        tx.set_data("new_guild_data", serde_json::to_value(&new_incomplete).unwrap());
+
+        let span = tx.start_child("db", "Update guild");
         if let Err(why) = self
             .conn
             .execute(
@@ -307,8 +375,13 @@ impl EventHandler for BotEvents {
             )
             .await
         {
+            sentry::capture_error(&why);
             error!("Error updating guild: {why}");
+        } else {
+            tx.set_status(sentry::protocol::SpanStatus::Ok)
         }
+        span.finish();
+        tx.finish();
     }
 
     async fn guild_delete(
@@ -320,7 +393,6 @@ impl EventHandler for BotEvents {
         if incomplete.unavailable {
             return;
         }
-
     }
 
     async fn resume(

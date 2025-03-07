@@ -121,7 +121,7 @@ pub async fn runner(
             "main-task",
         ));
 
-        let child = transaction.start_child("db", "fetch_events");
+        let child = transaction.start_child("db", "Fetch Events");
         child.set_data("status", Value::String(EventStatus::NotAllowed.into()));
         let not_allowed_events =
             fetch_events_by_status(db_conn, EventStatus::NotAllowed).await?;
@@ -129,16 +129,20 @@ pub async fn runner(
         child.set_status(SpanStatus::Ok);
         child.finish();
 
-        let span = transaction.start_child("main-task", "allow_requests");
         for event in not_allowed_events.into_iter() {
+            let span = transaction.start_child("db", "Has Allow Requests");
             if has_allow_request(db_conn, &event).await?.is_none() {
+                let ca_span = span.start_child("db", "Create Allow Request");
+                ca_span.set_data("allow-request", serde_json::to_value(&event).unwrap());
                 create_allow_request(db_conn, &event, ctx).await?;
+                ca_span.set_status(SpanStatus::Ok);
+                ca_span.finish();
             }
+            span.set_status(SpanStatus::Ok);
+            span.finish();
         }
-        span.set_status(SpanStatus::Ok);
-        span.finish();
 
-        let span = transaction.start_child("db", "fetch_events");
+        let span = transaction.start_child("db", "Fetch Events");
         span.set_data("status", Value::String(EventStatus::Allowed.into()));
         let allowed_events =
             fetch_events_by_status(db_conn, EventStatus::Allowed).await?;
@@ -154,7 +158,7 @@ pub async fn runner(
 
         let mut queued_guilds = Vec::new();
         for event in allowed_events.into_iter() {
-            let span = transaction.start_child("main-task", "handle_event");
+            let span = transaction.start_child("main-task", "Handle Event");
             span.set_data("event", serde_json::to_value(&event).unwrap());
             if (Utc::now() - event.created_at).num_days() > 7 {
                 mark_event_done(db_conn, event.id as i64).await?;
@@ -163,7 +167,7 @@ pub async fn runner(
             for guild in
                 tokio::task::unconstrained(fetch_guilds(db_conn)).await?
             {
-                let gspan = span.start_child("main-task", "handle_guild");
+                let gspan = span.start_child("main-task", "Handle Guild");
                 gspan.set_data("guild", serde_json::to_value(&guild).unwrap());
                 let (role, channel, use_threads) =
                     guild.settings_for_series(event.series);
@@ -207,7 +211,7 @@ pub async fn runner(
             for document in
                 fetch_docs_for_event(db_conn, event.id as i64).await?
             {
-                let dspan = span.start_child("main-task", "handle_document");
+                let dspan = span.start_child("main-task", "Handle Document");
                 dspan.set_data("document", serde_json::to_value(&document).unwrap());
                 mark_doc_done(db_conn, document.id).await?;
                 let images =

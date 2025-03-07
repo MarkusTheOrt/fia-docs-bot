@@ -5,6 +5,7 @@ use std::{
 
 use event_manager::BotEvents;
 
+use sentry::{Hub, SentryFutureExt};
 use serenity::{
     all::{Settings, ShardManager},
     client::ClientBuilder,
@@ -104,8 +105,8 @@ fn main() {
                     .expect("Error registering ctrlc handler");
                 shard_manager.shutdown_all().await;
             });
-
-            if let Err(why) = client.start_autosharded().await {
+            let hub = Hub::new_from_top(Hub::current());
+            if let Err(why) = client.start_autosharded().bind_hub(hub).await {
                 error!("Error starting Discord client: {why}");
             }
 
