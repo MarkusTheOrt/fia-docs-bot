@@ -36,7 +36,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .build()
     .await?;
 
-    let db_conn = database.connect()?;
     let should_stop = Arc::new(AtomicBool::new(false));
     let st1 = should_stop.clone();
     
@@ -47,6 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     });
     
     loop {
+        let db_conn = database.connect()?;
         let start = Instant::now();
         if should_stop.load(Ordering::Relaxed) {
             break;
@@ -61,14 +61,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let runner_time = Instant::now() - start;
 
         tokio::time::sleep(
-            Duration::from_secs(20)
+            Duration::from_secs(5)
                 .checked_sub(runner_time)
                 .unwrap_or(Duration::from_secs(1)),
         )
         .await;
     }
 
-    //database.sync().await?;
 
     Ok(())
 }

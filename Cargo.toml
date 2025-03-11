@@ -1,9 +1,16 @@
 [package]
 name = "fia-docs-api"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+default-run = "fia-docs-api"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "docker-build"
+path = "tools/docker-build.rs"
+
+[[bin]]
+name = "docker-push"
+path = "tools/docker-push.rs"
 
 [dependencies]
 aws-sign-v4 = { git = "https://github.com/MarkusTheOrt/aws-sign-v4", version = "0.3.0" }
