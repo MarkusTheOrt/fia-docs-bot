@@ -79,7 +79,6 @@ pub async fn runner(db_conn: &Connection,
 
     tokio::task::yield_now().await;
     let start = Utc::now();
-    info!("Scanning for documents.");
     let year = start.year();
     populate_cache(db_conn, &mut local_cache, year).await?;
 
@@ -189,6 +188,7 @@ async fn runner_internal(
         let cache_event = cache.events.iter().find(|f| {
             ev.title.as_ref().is_some_and(|t| *t == f.title)
                 && ev.season.is_some_and(|s| s == year)
+                && f.series == series
         });
         let real_event = match cache_event {
             Some(db_event) => db_event.to_owned(),
