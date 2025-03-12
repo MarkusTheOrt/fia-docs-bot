@@ -21,8 +21,8 @@ use std::{
 use tracing::info;
 
 const F1_DOCS_URL:&str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071";
-const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/formula-2-championship-44";
-const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2024-2043/championships/fia-formula-3-championship-1012";
+const F2_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2025-2071/championships/formula-2-championship-44";
+const F3_DOCS_URL:&str = "https://www.fia.com/documents/season/season-2025-2071/championships/fia-formula-3-championship-1012";
 
 struct LocalCache {
     pub documents: Vec<Document>,
@@ -83,9 +83,8 @@ pub async fn runner(db_conn: &Connection,
     let year = start.year();
     populate_cache(db_conn, &mut local_cache, year).await?;
 
-    //for i in Series::F1.i8()..=Series::F1.i8() {
-        //let series = Series::from(i);
-        let series = Series::F1;
+    for i in Series::F1.i8()..=Series::F3.i8() {
+        let series = Series::from(i);
         let docs_url = match series {
             Series::F1 => F1_DOCS_URL,
             Series::F2 => F2_DOCS_URL,
@@ -94,7 +93,7 @@ pub async fn runner(db_conn: &Connection,
         };
         runner_internal(db_conn, year, docs_url, series, &mut local_cache, should_stop.clone())
             .await?;
-    //}
+    }
 
     Ok(())
 }
