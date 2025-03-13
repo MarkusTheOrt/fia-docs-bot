@@ -4,7 +4,13 @@ use serenity::all::{
     EditInteractionResponse, Permissions,
 };
 
-use crate::error::Result;
+use crate::{
+    database::{
+        create_new_thread, fetch_guild_by_discord_id,
+        fetch_latest_event_by_series, fetch_thread_for_guild_and_event,
+    },
+    error::Result,
+};
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("check-repost")
@@ -20,15 +26,58 @@ pub async fn run(
     _ = conn;
     cmd.defer_ephemeral(http).await?;
 
-    cmd.edit_response(
-        http,
-        EditInteractionResponse::new().embed(
-            CreateEmbed::new()
-                .title("Success.")
-                .description("Reposting documents for F1/F2/F3 now."),
-        ),
-    )
-    .await?;
+    let Some(ev) =
+        fetch_latest_event_by_series(conn, f1_bot_types::Series::F1).await?
+    else {
+        cmd.edit_response(
+            http,
+            EditInteractionResponse::new().embed(
+                CreateEmbed::new()
+                    .title("Error")
+                    .description("No Event found."),
+            ),
+        )
+        .await?;
+        return Ok(());
+    };
+    let Some(guild) =
+        fetch_guild_by_discord_id(conn, cmd.guild_id.unwrap()).await?
+    else {
+        cmd.edit_response(
+            http,
+            EditInteractionResponse::new().embed(
+                CreateEmbed::new().title("Error").description("Invalid Guild"),
+            ),
+        )
+        .await?;
+        return Ok(());
+    };
+
+    if fetch_thread_for_guild_and_event(conn, guild.id, ev.id as i64)
+        .await?
+        .is_none()
+    {
+        create_new_thread(conn, http, &guild, &ev).await?;
+        cmd.edit_response(
+            http,
+            EditInteractionResponse::new().embed(
+                CreateEmbed::new().title("Command still WIP").description(
+                    format!("Created Thread for event ```rs\n{ev:#?}```"),
+                ),
+            ),
+        )
+        .await?;
+    } else {
+        cmd.edit_response(
+            http,
+            EditInteractionResponse::new().embed(
+                CreateEmbed::new()
+                    .title("Info")
+                    .description("Your guild already has a thread."),
+            ),
+        )
+        .await?;
+    }
 
     Ok(())
 }

@@ -8,12 +8,10 @@ use sentry::{
     protocol::{SpanStatus, Value},
     TransactionContext, User,
 };
-use serenity::
-    all::{
-        ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
-        CreateMessage,
-    }
-;
+use serenity::{all::{
+    ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
+    CreateMessage,
+}, futures::future::join_all};
 use tracing::{error, info};
 
 use crate::database::{
@@ -133,7 +131,10 @@ pub async fn runner(
             let span = transaction.start_child("db", "Has Allow Requests");
             if has_allow_request(db_conn, &event).await?.is_none() {
                 let ca_span = span.start_child("db", "Create Allow Request");
-                ca_span.set_data("allow-request", serde_json::to_value(&event).unwrap());
+                ca_span.set_data(
+                    "allow-request",
+                    serde_json::to_value(&event).unwrap(),
+                );
                 create_allow_request(db_conn, &event, ctx).await?;
                 ca_span.set_status(SpanStatus::Ok);
                 ca_span.finish();
@@ -163,18 +164,19 @@ pub async fn runner(
             if (Utc::now() - event.created_at).num_days() > 7 {
                 mark_event_done(db_conn, event.id as i64).await?;
             }
-            
+
             for guild in
                 tokio::task::unconstrained(fetch_guilds(db_conn)).await?
             {
-                let gspan = span.start_child("main-task", "Handle Guild");
-                gspan.set_data("guild", serde_json::to_value(&guild).unwrap());
                 let (role, channel, use_threads) =
                     guild.settings_for_series(event.series);
-
                 let Some(channel) = channel else {
                     continue;
                 };
+
+                let gspan = span.start_child("main-task", "Handle Guild");
+                gspan.set_data("guild", serde_json::to_value(&guild).unwrap());
+
                 let channel_to_post = if !use_threads {
                     channel.to_owned()
                 } else {
@@ -212,40 +214,49 @@ pub async fn runner(
                 fetch_docs_for_event(db_conn, event.id as i64).await?
             {
                 let dspan = span.start_child("main-task", "Handle Document");
-                dspan.set_data("document", serde_json::to_value(&document).unwrap());
+                dspan.set_data(
+                    "document",
+                    serde_json::to_value(&document).unwrap(),
+                );
                 mark_doc_done(db_conn, document.id).await?;
                 let images =
                     fetch_images_for_document(db_conn, document.id).await?;
                 let message_to_send = create_message(&document, images);
-                for queued in queued_guilds
+
+                let queued: Vec<_> = queued_guilds
                     .iter()
                     .filter(|f| f.event_id == document.event_id)
-                {
-                    let hub = sentry::Hub::new_from_top(sentry::Hub::current());
-                    let _guard = hub.push_scope();
-                    hub.configure_scope(|scope| {
-                        scope.set_user(Some(User {
-                            id: Some(queued.guild_id.to_string()),
-                            ..Default::default()
-                        }))
-                    });
+                    .map(async |queued| {
+                        let hub =
+                            sentry::Hub::new_from_top(sentry::Hub::current());
+                        let _guard = hub.push_scope();
+                        hub.configure_scope(|scope| {
+                            scope.set_user(Some(User {
+                                id: Some(queued.guild_id.to_string()),
+                                ..Default::default()
+                            }))
+                        });
 
-                    let mut msg = message_to_send.clone();
-                    if let Some(role) = &queued.role {
-                        msg = msg.content(format!("<@&{role}>"));
-                    }
-                    let channel_id = queued.channel_to_post;
-                    if let Err(why) = channel_id.send_message(ctx, msg).await {
-                        hub.capture_error(&why);
-                        error!(
-                            guild_id = queued.guild_id.clone(),
-                            document_id = document.id,
-                            document_title = document.title.clone(),
-                            "{why}"
-                        );
-                    }
-                    
-                }
+                        let mut msg = message_to_send.clone();
+                        if let Some(role) = &queued.role {
+                            msg = msg.content(format!("<@&{role}>"));
+                        }
+                        let channel_id = queued.channel_to_post;
+                        if let Err(why) =
+                            channel_id.send_message(ctx, msg).await
+                        {
+                            hub.capture_error(&why);
+                            error!(
+                                guild_id = queued.guild_id.clone(),
+                                document_id = document.id,
+                                document_title = document.title.clone(),
+                                "{why}"
+                            );
+                        }
+                    })
+                    .collect();
+                drop(join_all(queued).await);
+
                 dspan.set_status(SpanStatus::Ok);
                 dspan.finish();
             }

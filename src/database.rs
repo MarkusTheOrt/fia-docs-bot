@@ -21,6 +21,25 @@ use serenity::all::{
 };
 use tracing::{info, Instrument};
 
+pub async fn fetch_latest_event_by_series(
+    db_conn: &Connection,
+    series: Series,
+) -> Result<Option<Event>> {
+    let mut res = db_conn
+        .query(
+            r#"SELECT * FROM EVENTS 
+    WHERE series = ? 
+    ORDER BY created_at DESC 
+    LIMIT 1"#,
+            params![series],
+        )
+        .await?;
+    Ok(match res.next().await? {
+        None => None,
+        Some(d) => Some(de::from_row::<Event>(&d)?),
+    })
+}
+
 #[tracing::instrument(skip(db_conn))]
 pub async fn fetch_events_by_status(
     db_conn: &Connection,
@@ -79,6 +98,25 @@ pub async fn fetch_guilds(db_conn: &Connection) -> Result<Vec<Guild>> {
     }
 
     Ok(return_value)
+}
+
+pub async fn fetch_thread_for_discord_guild_and_event(
+    db_conn: &Connection,
+    guild_id: impl Into<String>,
+    event_id: i64,
+) -> Result<Option<Thread>> {
+    Ok(None)
+}
+
+pub async fn fetch_guild_by_discord_id(
+    db_conn: &Connection,
+    guild_id: impl ToString,
+) -> Result<Option<Guild>> {
+    let mut cursor = db_conn
+        .query("SELECT * FROM guilds WHERE discord_id = ?", params![guild_id.to_string()])
+        .await?;
+
+    Ok(cursor.next().await?.map(|f| de::from_row::<Guild>(&f)).transpose()?)
 }
 
 #[tracing::instrument(skip(db_conn))]
