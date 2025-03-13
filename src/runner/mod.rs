@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use f1_bot_types::{Event, EventStatus};
@@ -8,10 +8,14 @@ use sentry::{
     protocol::{SpanStatus, Value},
     TransactionContext, User,
 };
-use serenity::{all::{
-    ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
-    CreateMessage,
-}, futures::future::join_all};
+use serenity::{
+    all::{
+        ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
+        CreateMessage,
+    },
+    futures::future::join_all,
+};
+use tokio::sync::Mutex;
 use tracing::{error, info};
 
 use crate::database::{
@@ -157,58 +161,74 @@ pub async fn runner(
             event_id: i64,
         }
 
-        let mut queued_guilds = Vec::new();
+        let mt_queued_guilds = Arc::new(Mutex::new(Vec::new()));
         for event in allowed_events.into_iter() {
             let span = transaction.start_child("main-task", "Handle Event");
             span.set_data("event", serde_json::to_value(&event).unwrap());
             if (Utc::now() - event.created_at).num_days() > 7 {
                 mark_event_done(db_conn, event.id as i64).await?;
             }
-
-            for guild in
-                tokio::task::unconstrained(fetch_guilds(db_conn)).await?
-            {
-                let (role, channel, use_threads) =
-                    guild.settings_for_series(event.series);
-                let Some(channel) = channel else {
-                    continue;
-                };
-
-                let gspan = span.start_child("main-task", "Handle Guild");
-                gspan.set_data("guild", serde_json::to_value(&guild).unwrap());
-
-                let channel_to_post = if !use_threads {
-                    channel.to_owned()
-                } else {
-                    match fetch_thread_for_guild_and_event(
-                        db_conn,
-                        guild.id,
-                        event.id as i64,
-                    )
+            let gspan = &span;
+            let guild_tasks: Vec<_> =
+                tokio::task::unconstrained(fetch_guilds(db_conn))
                     .await?
-                    {
-                        Some(c) => c.discord_id,
-                        None => {
-                            if let Ok(thread) =
-                                create_new_thread(db_conn, &ctx, &guild, &event)
-                                    .await
+                    .into_iter()
+                    .map(async |guild| -> crate::error::Result {
+                        let (role, channel, use_threads) =
+                            guild.settings_for_series(event.series);
+                        let Some(channel) = channel else {
+                            return Ok(());
+                        };
+                        let nspan = gspan.start_child("guild", "Enqueue Guild");
+                        nspan.set_data(
+                            "guild",
+                            serde_json::to_value(&guild).unwrap(),
+                        );
+                        let channel_to_post = if !use_threads {
+                            channel.to_owned()
+                        } else {
+                            match fetch_thread_for_guild_and_event(
+                                db_conn,
+                                guild.id,
+                                event.id as i64,
+                            )
+                            .await?
                             {
-                                thread.discord_id
-                            } else {
-                                continue;
+                                Some(c) => c.channel_id,
+                                None => {
+                                    create_new_thread(
+                                        db_conn, ctx, &guild, &event,
+                                    )
+                                    .await?
+                                    .channel_id
+                                },
                             }
+                        };
+                        {
+                            let mut queued_guilds =
+                                mt_queued_guilds.lock().await;
+                            queued_guilds.push(QueuedGuild {
+                                guild_id: guild.discord_id.to_owned(),
+                                event_id: event.id as i64,
+                                channel_to_post: ChannelId::new(
+                                    channel_to_post.parse()?,
+                                ),
+                                role: role.cloned(),
+                            });
+                        }
+                        nspan.finish();
+                        Ok(())
+                    })
+                    .collect();
+            let res = join_all(guild_tasks).await;
+            for res in res.into_iter() {
+                if let Err(why) = res {
+                    match why {
+                        crate::error::Error::Serenity(_) => {
                         },
+                        e => { sentry::capture_error(&e); }
                     }
-                };
-
-                queued_guilds.push(QueuedGuild {
-                    guild_id: guild.discord_id.to_owned(),
-                    event_id: event.id as i64,
-                    channel_to_post: ChannelId::new(channel_to_post.parse()?),
-                    role: role.cloned(),
-                });
-                gspan.set_status(SpanStatus::Ok);
-                gspan.finish();
+                }
             }
             for document in
                 fetch_docs_for_event(db_conn, event.id as i64).await?
@@ -222,7 +242,7 @@ pub async fn runner(
                 let images =
                     fetch_images_for_document(db_conn, document.id).await?;
                 let message_to_send = create_message(&document, images);
-
+                let queued_guilds = mt_queued_guilds.lock().await;
                 let queued: Vec<_> = queued_guilds
                     .iter()
                     .filter(|f| f.event_id == document.event_id)
@@ -265,7 +285,7 @@ pub async fn runner(
         }
         transaction.set_status(SpanStatus::Ok);
         transaction.finish();
-        queued_guilds.clear();
+        mt_queued_guilds.lock().await.clear();
         tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
