@@ -194,7 +194,7 @@ pub async fn runner(
                             )
                             .await?
                             {
-                                Some(c) => c.channel_id,
+                                Some(c) => c.discord_id,
                                 None => {
                                     create_new_thread(
                                         db_conn, ctx, &guild, &event,
