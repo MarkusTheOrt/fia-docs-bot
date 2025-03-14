@@ -1,7 +1,7 @@
 use libsql::Connection;
 use serenity::all::{
     CacheHttp, CommandInteraction, CreateCommand, CreateEmbed,
-    EditInteractionResponse, Permissions,
+    CreateInteractionResponseMessage, EditInteractionResponse, Permissions,
 };
 
 use crate::{
@@ -14,6 +14,7 @@ use crate::{
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("check-repost")
+        .dm_permission(false)
         .description("Checks and posts the newest event if not posted.")
         .default_member_permissions(Permissions::ADMINISTRATOR)
 }
@@ -24,6 +25,17 @@ pub async fn run(
     cmd: CommandInteraction,
 ) -> Result {
     _ = conn;
+    let Some(guild_id) = cmd.guild_id else {
+        cmd.create_response(
+            http,
+            serenity::all::CreateInteractionResponse::Message(
+                CreateInteractionResponseMessage::new()
+                    .content("Can only be done in the context of a guild."),
+            ),
+        )
+        .await?;
+        return Ok(());
+    };
     cmd.defer_ephemeral(http).await?;
 
     let Some(ev) =
@@ -40,9 +52,7 @@ pub async fn run(
         .await?;
         return Ok(());
     };
-    let Some(guild) =
-        fetch_guild_by_discord_id(conn, cmd.guild_id.unwrap()).await?
-    else {
+    let Some(guild) = fetch_guild_by_discord_id(conn, guild_id).await? else {
         cmd.edit_response(
             http,
             EditInteractionResponse::new().embed(

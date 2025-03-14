@@ -20,6 +20,7 @@ pub fn register() -> CreateCommand {
     CreateCommand::new("settings")
         .description("Set up the FIA Documents Bot")
         .default_member_permissions(Permissions::ADMINISTRATOR)
+        .dm_permission(false)
         .set_options(vec![
             create_option(Series::F1),
             create_option(Series::F2),
