@@ -1,5 +1,5 @@
 use std::{
-    sync::{atomic::AtomicBool, Arc},
+    sync::{Arc, atomic::AtomicBool},
     time::Duration,
 };
 
@@ -12,9 +12,9 @@ use serenity::{
     prelude::*,
 };
 
-use tracing::{error, level_filters::LevelFilter, Level};
+use tracing::{Level, error, level_filters::LevelFilter};
 use tracing_subscriber::{
-    layer::SubscriberExt, util::SubscriberInitExt, Layer,
+    Layer, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 mod commands;

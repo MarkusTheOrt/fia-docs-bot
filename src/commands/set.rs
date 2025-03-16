@@ -14,7 +14,7 @@ use serenity::{
     prelude::Context,
 };
 
-use libsql::{params, Connection};
+use libsql::{Connection, params};
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("settings")

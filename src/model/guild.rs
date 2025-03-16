@@ -1,8 +1,6 @@
 use chrono::{DateTime, Utc};
 use f1_bot_types::Series;
 
-
-
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub struct Guild {
     pub id: i64,
@@ -21,8 +19,10 @@ pub struct Guild {
 }
 
 impl Guild {
-    
-    pub fn settings_for_series(&self, series: Series) -> (Option<&String>, Option<&String>, bool) {
+    pub fn settings_for_series(
+        &self,
+        series: Series,
+    ) -> (Option<&String>, Option<&String>, bool) {
         match series {
             Series::F1 => self.f1_settings(),
             Series::F2 => self.f2_settings(),
@@ -33,11 +33,11 @@ impl Guild {
 
     pub fn f1_settings(&self) -> (Option<&String>, Option<&String>, bool) {
         (self.f1_role.as_ref(), self.f1_channel.as_ref(), self.f1_threads)
-    } 
+    }
     pub fn f2_settings(&self) -> (Option<&String>, Option<&String>, bool) {
         (self.f2_role.as_ref(), self.f2_channel.as_ref(), self.f2_threads)
-    } 
+    }
     pub fn f3_settings(&self) -> (Option<&String>, Option<&String>, bool) {
         (self.f3_role.as_ref(), self.f3_channel.as_ref(), self.f3_threads)
-    } 
+    }
 }

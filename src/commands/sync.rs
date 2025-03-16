@@ -46,7 +46,9 @@ pub async fn run(
             error!("Error registering \"settings\" command: {why:#?}");
         }
 
-        if let Err(why) = ctx.http().create_global_command(&repost::register()).await {
+        if let Err(why) =
+            ctx.http().create_global_command(&repost::register()).await
+        {
             error!("Error registering \"repost\" command: {why:#?}")
         }
     }

@@ -11,15 +11,16 @@ use f1_bot_types::{
     Document, DocumentStatus, Event, EventStatus, Image, Series,
 };
 use libsql::{
+    Connection,
     de::{self, from_row},
-    params, Connection,
+    params,
 };
 use serde::Serialize;
 use serenity::all::{
     AutoArchiveDuration, CacheHttp, ChannelId, ChannelType, CreateEmbed,
     CreateEmbedAuthor, CreateMessage, CreateThread,
 };
-use tracing::{info, Instrument};
+use tracing::{Instrument, info};
 
 pub async fn fetch_latest_event_by_series(
     db_conn: &Connection,
@@ -113,7 +114,10 @@ pub async fn fetch_guild_by_discord_id(
     guild_id: impl ToString,
 ) -> Result<Option<Guild>> {
     let mut cursor = db_conn
-        .query("SELECT * FROM guilds WHERE discord_id = ?", params![guild_id.to_string()])
+        .query(
+            "SELECT * FROM guilds WHERE discord_id = ?",
+            params![guild_id.to_string()],
+        )
         .await?;
 
     Ok(cursor.next().await?.map(|f| de::from_row::<Guild>(&f)).transpose()?)

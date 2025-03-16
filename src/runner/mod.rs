@@ -2,11 +2,11 @@ use std::{sync::Arc, time::Duration};
 
 use chrono::{DateTime, Utc};
 use f1_bot_types::{Event, EventStatus};
-use libsql::{de, params, Connection};
+use libsql::{Connection, de, params};
 use notifbot_macros::notifbot_enum;
 use sentry::{
-    protocol::{SpanStatus, Value},
     TransactionContext, User,
+    protocol::{SpanStatus, Value},
 };
 use serenity::{
     all::{
@@ -162,18 +162,21 @@ pub async fn runner(
         }
 
         let mt_queued_guilds = Arc::new(Mutex::new(Vec::new()));
+
         for event in allowed_events.into_iter() {
             let span = transaction.start_child("main-task", "Handle Event");
             span.set_data("event", serde_json::to_value(&event).unwrap());
-            if (Utc::now() - event.created_at).num_days() > 7 {
+            if (Utc::now() - event.created_at).num_days() > 10 {
                 mark_event_done(db_conn, event.id as i64).await?;
             }
             let gspan = &span;
-            let guild_tasks: Vec<_> =
-                tokio::task::unconstrained(fetch_guilds(db_conn))
-                    .await?
-                    .into_iter()
+            let guilds =
+                tokio::task::unconstrained(fetch_guilds(db_conn)).await?;
+            for chunk in guilds.chunks(30) {
+                let guild_tasks: Vec<_> = chunk
+                    .iter()
                     .map(async |guild| -> crate::error::Result {
+                        tokio::task::yield_now().await;
                         let (role, channel, use_threads) =
                             guild.settings_for_series(event.series);
                         let Some(channel) = channel else {
@@ -182,7 +185,7 @@ pub async fn runner(
                         let nspan = gspan.start_child("guild", "Enqueue Guild");
                         nspan.set_data(
                             "guild",
-                            serde_json::to_value(&guild).unwrap(),
+                            serde_json::to_value(guild).unwrap(),
                         );
                         let channel_to_post = if !use_threads {
                             channel.to_owned()
@@ -197,7 +200,7 @@ pub async fn runner(
                                 Some(c) => c.discord_id,
                                 None => {
                                     create_new_thread(
-                                        db_conn, ctx, &guild, &event,
+                                        db_conn, ctx, guild, &event,
                                     )
                                     .await?
                                     .channel_id
@@ -220,13 +223,15 @@ pub async fn runner(
                         Ok(())
                     })
                     .collect();
-            let res = join_all(guild_tasks).await;
-            for res in res.into_iter() {
-                if let Err(why) = res {
-                    match why {
-                        crate::error::Error::Serenity(_) => {
-                        },
-                        e => { sentry::capture_error(&e); }
+                let res = join_all(guild_tasks).await;
+                for res in res.into_iter() {
+                    if let Err(why) = res {
+                        match why {
+                            crate::error::Error::Serenity(_) => {},
+                            e => {
+                                sentry::capture_error(&e);
+                            },
+                        }
                     }
                 }
             }
@@ -243,40 +248,42 @@ pub async fn runner(
                     fetch_images_for_document(db_conn, document.id).await?;
                 let message_to_send = create_message(&document, images);
                 let queued_guilds = mt_queued_guilds.lock().await;
-                let queued: Vec<_> = queued_guilds
-                    .iter()
-                    .filter(|f| f.event_id == document.event_id)
-                    .map(async |queued| {
-                        let hub =
-                            sentry::Hub::new_from_top(sentry::Hub::current());
-                        let _guard = hub.push_scope();
-                        hub.configure_scope(|scope| {
-                            scope.set_user(Some(User {
-                                id: Some(queued.guild_id.to_string()),
-                                ..Default::default()
-                            }))
-                        });
-
-                        let mut msg = message_to_send.clone();
-                        if let Some(role) = &queued.role {
-                            msg = msg.content(format!("<@&{role}>"));
-                        }
-                        let channel_id = queued.channel_to_post;
-                        if let Err(why) =
-                            channel_id.send_message(ctx, msg).await
-                        {
-                            hub.capture_error(&why);
-                            error!(
-                                guild_id = queued.guild_id.clone(),
-                                document_id = document.id,
-                                document_title = document.title.clone(),
-                                "{why}"
+                for chunk in queued_guilds.chunks(30) {
+                    let queued: Vec<_> = chunk
+                        .iter()
+                        .filter(|f| f.event_id == document.event_id)
+                        .map(async |queued| {
+                            let hub = sentry::Hub::new_from_top(
+                                sentry::Hub::current(),
                             );
-                        }
-                    })
-                    .collect();
-                drop(join_all(queued).await);
+                            let _guard = hub.push_scope();
+                            hub.configure_scope(|scope| {
+                                scope.set_user(Some(User {
+                                    id: Some(queued.guild_id.to_string()),
+                                    ..Default::default()
+                                }))
+                            });
 
+                            let mut msg = message_to_send.clone();
+                            if let Some(role) = &queued.role {
+                                msg = msg.content(format!("<@&{role}>"));
+                            }
+                            let channel_id = queued.channel_to_post;
+                            if let Err(why) =
+                                channel_id.send_message(ctx, msg).await
+                            {
+                                hub.capture_error(&why);
+                                error!(
+                                    guild_id = queued.guild_id.clone(),
+                                    document_id = document.id,
+                                    document_title = document.title.clone(),
+                                    "{why}"
+                                );
+                            }
+                        })
+                        .collect();
+                    drop(join_all(queued).await);
+                }
                 dspan.set_status(SpanStatus::Ok);
                 dspan.finish();
             }

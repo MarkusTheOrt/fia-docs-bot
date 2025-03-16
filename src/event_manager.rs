@@ -4,7 +4,7 @@ use std::sync::atomic::Ordering;
 
 use chrono::Utc;
 use f1_bot_types::EventStatus;
-use libsql::{params, Connection};
+use libsql::{Connection, params};
 use sentry::Hub;
 use sentry::TransactionContext;
 use serenity::all::{
@@ -23,7 +23,7 @@ use serenity::{
 use tracing::{error, info};
 
 use crate::commands;
-use crate::runner::{runner, AllowRequestStatus};
+use crate::runner::{AllowRequestStatus, runner};
 
 pub async fn allow_request(
     db_conn: &Connection,
@@ -364,7 +364,10 @@ impl EventHandler for BotEvents {
         if let Some(guild) = old {
             tx.set_data("old_guild", serde_json::to_value(&guild).unwrap());
         }
-        tx.set_data("new_guild_data", serde_json::to_value(&new_incomplete).unwrap());
+        tx.set_data(
+            "new_guild_data",
+            serde_json::to_value(&new_incomplete).unwrap(),
+        );
 
         let span = tx.start_child("db", "Update guild");
         if let Err(why) = self

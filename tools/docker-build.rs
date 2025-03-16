@@ -1,10 +1,16 @@
 use std::process::Command;
 
-
 pub fn main() {
     let status = Command::new("docker")
         .env("DOCKER_BAKE", "1")
-        .args(["build", "-f", "docker/Dockerfile.bot", "-t", "codeberg.org/mto/fia-docs-bot:latest", "."])
+        .args([
+            "build",
+            "-f",
+            "docker/Dockerfile.bot",
+            "-t",
+            "codeberg.org/mto/fia-docs-bot:latest",
+            ".",
+        ])
         .status()
         .expect("Failed to run Docker build");
 
