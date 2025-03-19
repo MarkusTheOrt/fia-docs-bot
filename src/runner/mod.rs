@@ -203,7 +203,7 @@ pub async fn runner(
                                         db_conn, ctx, guild, &event,
                                     )
                                     .await?
-                                    .channel_id
+                                    .discord_id
                                 },
                             }
                         };
