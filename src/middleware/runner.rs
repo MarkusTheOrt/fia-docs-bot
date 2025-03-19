@@ -45,6 +45,15 @@ async fn populate_cache(
     cache: &mut LocalCache,
     year: i32,
 ) -> crate::error::Result {
+    cache.events.clear();
+    let mut events = db_conn
+        .query("SELECT * FROM events WHERE year = ?", params![year])
+        .await?;
+    while let Ok(Some(event)) = events.next().await {
+        cache.events.push(libsql::de::from_row(&event)?);
+    }
+
+
     let delta = Utc::now() - cache.last_populated;
     // lets revalidate the cache once a day.
     if delta.num_days() < 1 {
@@ -56,15 +65,9 @@ async fn populate_cache(
             params![year.to_string()],
         )
         .await?;
-    let mut events = db_conn
-        .query("SELECT * FROM events WHERE year = ?", params![year])
-        .await?;
     cache.documents.clear();
     while let Ok(Some(doc)) = docs.next().await {
         cache.documents.push(libsql::de::from_row(&doc)?);
-    }
-    while let Ok(Some(event)) = events.next().await {
-        cache.events.push(libsql::de::from_row(&event)?);
     }
 
     cache.last_populated = Utc::now();
