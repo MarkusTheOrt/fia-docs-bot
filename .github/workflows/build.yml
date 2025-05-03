@@ -1,0 +1,80 @@
+name: "Build-and-Check"
+on: [push]
+jobs:
+  Build-All-Platforms:
+    name: "Build on all Platforms"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest ]
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+      
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-build-stable-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Set up OS
+        run: echo "Running on ${{ matrix.os }}"
+    
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo build
+  Cargo-Clippy:
+    name: "Cargo Clippy"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.toml') }}
+    
+      - name: Set up OS
+        run: echo "Running on ${{ matrix.os }}"
+    
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - run: cargo clippy
+  Rustfmt:
+    name: "Formatting"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+    
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-fmt-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: Set up OS
+        run: echo "Running on ${{ matrix.os }}"
+    
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+    
+      - run: cargo fmt --all -- --check
+    
+
