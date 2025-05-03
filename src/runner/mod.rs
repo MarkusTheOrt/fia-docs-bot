@@ -11,7 +11,7 @@ use sentry::{
 use serenity::{
     all::{
         ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
-        CreateMessage,
+        CreateMessage, StatusCode,
     },
     futures::future::join_all,
 };
@@ -145,6 +145,7 @@ pub async fn runner(
             }
             span.set_status(SpanStatus::Ok);
             span.finish();
+            1234
         }
 
         let span = transaction.start_child("db", "Fetch Events");
@@ -170,8 +171,12 @@ pub async fn runner(
                 mark_event_done(db_conn, event.id as i64).await?;
             }
             let gspan = &span;
-            let guilds =
-                tokio::task::unconstrained(fetch_guilds(db_conn)).await?;
+            let (ids, guilds): (Vec<_>, Vec<_>) =
+                tokio::task::unconstrained(fetch_guilds(db_conn))
+                    .await?
+                    .into_iter()
+                    .map(|f| (f.id, f))
+                    .collect();
             for chunk in guilds.chunks(30) {
                 let guild_tasks: Vec<_> = chunk
                     .iter()
@@ -224,10 +229,20 @@ pub async fn runner(
                     })
                     .collect();
                 let res = join_all(guild_tasks).await;
-                for res in res.into_iter() {
+                for (res, gid) in res.into_iter().zip(ids.chunks(30)) {
                     if let Err(why) = res {
                         match why {
-                            crate::error::Error::Serenity(_) => {},
+                            crate::error::Error::Serenity(e) => match e {
+                                serenity::Error::Model(serenity::all::ModelError::InvalidPermissions { .. }) => {
+                                }
+                                serenity::Error::Http(serenity::all::HttpError::UnsuccessfulRequest(e)) => {
+                                    match e.error.code {
+                                        10003 | 50013 => {},
+                                        _ => {}
+                                    }
+                                }
+                                _ => {}
+                            },
                             e => {
                                 sentry::capture_error(&e);
                             },
