@@ -90,7 +90,7 @@ pub async fn run(
     cmd.defer_ephemeral(ctx).await?;
     let options = cmd.data.options();
 
-    let subcommand = options.into_iter().next().take();
+    let subcommand = options.into_iter().next();
     if let Some(command) = subcommand {
         if let ResolvedValue::SubCommand(options) = command.value {
             let rv = match command.name {
@@ -136,7 +136,7 @@ pub async fn run(
     Ok(())
 }
 
-async fn series_command<'a>(
+async fn series_command(
     series: Series,
     pool: &Connection,
     cmd: &CommandInteraction,
@@ -220,9 +220,9 @@ fn resolve_options(
     options: Vec<ResolvedOption<'_>>
 ) -> Option<(Option<&PartialChannel>, bool, Option<&Role>)> {
     let mut it = options.into_iter();
-    let threads = it.next().take();
-    let channel = it.next().take();
-    let role = it.next().take();
+    let threads = it.next();
+    let channel = it.next();
+    let role = it.next();
     if let (channel, Some(threads), role) = (channel, threads, role) {
         let channel = match channel {
             None => None,
