@@ -7,7 +7,7 @@ pub fn main() {
         .expect("Failed to fetch git tag");
 
     if !tag.status.success() {
-        eprintln!("Docker Build script failed");
+        eprintln!("git tag checking failed");
         std::process::exit(1);
     }
 

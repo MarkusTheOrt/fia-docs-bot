@@ -150,8 +150,6 @@ impl EventHandler for BotEvents {
             "ready", "discord",
         ));
 
-        sentry::metrics::Metric::gauge("guilds", _ready.guilds.len() as f64)
-            .send();
         info!("Starting up!");
 
         let span = tx.start_child("discord", "Get Application Info");
