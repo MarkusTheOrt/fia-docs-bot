@@ -11,7 +11,7 @@ use sentry::{
 use serenity::{
     all::{
         ChannelId, Context, CreateActionRow, CreateButton, CreateEmbed,
-        CreateMessage, StatusCode,
+        CreateMessage,
     },
     futures::future::join_all,
 };
@@ -145,10 +145,6 @@ pub async fn runner(
             }
             span.set_status(SpanStatus::Ok);
             span.finish();
-
-
-
-            1234
         }
 
         let span = transaction.start_child("db", "Fetch Events");
@@ -232,7 +228,7 @@ pub async fn runner(
                     })
                     .collect();
                 let res = join_all(guild_tasks).await;
-                for (res, gid) in res.into_iter().zip(ids.chunks(30)) {
+                for (res, _gid) in res.into_iter().zip(ids.chunks(30)) {
                     if let Err(why) = res {
                         match why {
                             crate::error::Error::Serenity(e) => match e {
