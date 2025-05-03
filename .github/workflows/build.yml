@@ -27,6 +27,7 @@ jobs:
       - run: cargo build
   Docker-Build:
     name: "Docker Build"
+    needs: [ Build-All-Platforms, Cargo-Clippy, Rustfmt ]
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
