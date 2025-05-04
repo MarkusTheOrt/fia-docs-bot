@@ -78,4 +78,34 @@ pub fn main() {
         eprintln!("Docker rename failed!");
         std::process::exit(1);
     }
+
+    let status = Command::new("docker")
+        .args([
+            "push",
+            &format!(
+                "ghcr.io/{}/{}:{}",
+                repo,
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION")
+            ),
+        ])
+        .status()
+        .expect("Failed to run Docker tag");
+
+    if !status.success() {
+        eprintln!("Docker push failed!");
+        std::process::exit(1);
+    }
+    let status = Command::new("docker")
+        .args([
+            "push",
+            &format!("ghcr.io/{}/{}:latest", repo, env!("CARGO_PKG_NAME"),),
+        ])
+        .status()
+        .expect("Failed to run Docker tag");
+
+    if !status.success() {
+        eprintln!("Docker push failed!");
+        std::process::exit(1);
+    }
 }
