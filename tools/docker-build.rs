@@ -2,7 +2,7 @@ use std::process::Command;
 
 pub fn main() {
     let mut arg = std::env::args();
-    
+
     if arg.len() < 2 {
         eprintln!("This program requires the repository token to be passed.");
         std::process::exit(1);
@@ -69,11 +69,7 @@ pub fn main() {
         .args([
             "tag",
             env!("CARGO_PKG_NAME"),
-            &format!(
-                "ghcr.io/{}/{}:latest",
-                repo,
-                env!("CARGO_PKG_NAME"),
-            ),
+            &format!("ghcr.io/{}/{}:latest", repo, env!("CARGO_PKG_NAME"),),
         ])
         .status()
         .expect("Failed to run Docker tag");
