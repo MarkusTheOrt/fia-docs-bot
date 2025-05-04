@@ -1,6 +1,15 @@
 use std::process::Command;
 
 pub fn main() {
+    let mut arg = std::env::args();
+    
+    if arg.len() < 2 {
+        eprintln!("This program requires the repository token to be passed.");
+        std::process::exit(1);
+    }
+
+    let repo = arg.next_back().unwrap();
+
     let tag = Command::new("git")
         .args(["describe", "--tags", "--abbrev=0"])
         .output()
@@ -35,6 +44,42 @@ pub fn main() {
 
     if !status.success() {
         eprintln!("Docker build failed!");
+        std::process::exit(1);
+    }
+
+    let status = Command::new("docker")
+        .args([
+            "tag",
+            env!("CARGO_PKG_NAME"),
+            &format!(
+                "ghcr.io/{}/{}:{}",
+                repo,
+                env!("CARGO_PKG_NAME"),
+                env!("CARGO_PKG_VERSION")
+            ),
+        ])
+        .status()
+        .expect("Failed to run Docker tag");
+
+    if !status.success() {
+        eprintln!("Docker rename failed!");
+        std::process::exit(1);
+    }
+    let status = Command::new("docker")
+        .args([
+            "tag",
+            env!("CARGO_PKG_NAME"),
+            &format!(
+                "ghcr.io/{}/{}:latest",
+                repo,
+                env!("CARGO_PKG_NAME"),
+            ),
+        ])
+        .status()
+        .expect("Failed to run Docker tag");
+
+    if !status.success() {
+        eprintln!("Docker rename failed!");
         std::process::exit(1);
     }
 }
