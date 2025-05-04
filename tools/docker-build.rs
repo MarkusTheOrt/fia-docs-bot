@@ -8,7 +8,7 @@ pub fn main() {
         std::process::exit(1);
     }
 
-    let repo = arg.next_back().unwrap();
+    let repo = arg.next_back().unwrap().to_lowercase();
 
     let tag = Command::new("git")
         .args(["describe", "--tags", "--abbrev=0"])
