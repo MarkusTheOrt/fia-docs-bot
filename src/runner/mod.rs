@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 
 use crate::database::{
-    create_message, create_new_thread, fetch_docs_for_event,
+    self, create_message, create_new_thread, fetch_docs_for_event,
     fetch_events_by_status, fetch_guilds, fetch_images_for_document,
     fetch_thread_for_guild_and_event, mark_doc_done, mark_event_done,
 };
@@ -170,11 +170,11 @@ pub async fn runner(
                 mark_event_done(db_conn, event.id as i64).await?;
             }
             let gspan = &span;
-            let (ids, guilds): (Vec<_>, Vec<_>) =
+            let (ids, guilds, series): (Vec<_>, Vec<_>, Vec<_>) =
                 tokio::task::unconstrained(fetch_guilds(db_conn))
                     .await?
                     .into_iter()
-                    .map(|f| (f.id, f))
+                    .map(|f| (f.id, f, event.series))
                     .collect();
             for chunk in guilds.chunks(30) {
                 let guild_tasks: Vec<_> = chunk
@@ -228,15 +228,35 @@ pub async fn runner(
                     })
                     .collect();
                 let res = join_all(guild_tasks).await;
-                for (res, _gid) in res.into_iter().zip(ids.chunks(30)) {
-                    if let Err(why) = res {
-                        match why {
+                for ((res, _gid), series) in
+                    res.chunks(30).zip(ids.chunks(30)).zip(series.chunks(30))
+                {
+                    for ((result, guild_id), series) in
+                        res.iter().zip(_gid).zip(series)
+                    {
+                        if let Err(why) = result {
+                            match why {
                             crate::error::Error::Serenity(e) => match e {
                                 serenity::Error::Model(serenity::all::ModelError::InvalidPermissions { .. }) => {
+                                        if let Err(why) = database::clear_guild_settings(
+                                            db_conn,
+                                            guild_id.to_owned(),
+                                            series.to_owned()).await
+                                        {
+                                            sentry::capture_error(&why);
+                                        }
                                 }
                                 serenity::Error::Http(serenity::all::HttpError::UnsuccessfulRequest(e)) => {
                                     match e.error.code {
-                                        10003 | 50013 => {},
+                                        10003 | 50013 => {
+                                        if let Err(why) = database::clear_guild_settings(
+                                            db_conn,
+                                            guild_id.to_owned(),
+                                            series.to_owned()).await
+                                        {
+                                            sentry::capture_error(&why);
+                                        }
+                                            },
                                         _ => {}
                                     }
                                 }
@@ -245,6 +265,7 @@ pub async fn runner(
                             e => {
                                 sentry::capture_error(&e);
                             },
+                        }
                         }
                     }
                 }

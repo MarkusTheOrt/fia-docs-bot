@@ -41,6 +41,47 @@ pub async fn fetch_latest_event_by_series(
     })
 }
 
+pub async fn clear_guild_settings(
+    db_conn: &Connection,
+    guild_id: i64,
+    series: Series,
+) -> Result {
+    let _ = match series {
+        Series::F1 => {
+            db_conn
+                .execute(
+                    r#"UPDATE guilds
+        SET f1_channel = NULL
+        WHERE id = ?"#,
+                    params![guild_id],
+                )
+                .await?
+        },
+        Series::F2 => {
+            db_conn
+                .execute(
+                    r#"UPDATE guilds
+        SET f2_channel = NULL
+        WHERE id = ?"#,
+                    params![guild_id],
+                )
+                .await?
+        },
+        Series::F3 => {
+            db_conn
+                .execute(
+                    r#"UPDATE guilds
+        SET f3_channel = NULL
+        WHERE id = ?"#,
+                    params![guild_id],
+                )
+                .await?
+        },
+        Series::F1Academy => unimplemented!(),
+    };
+    Ok(())
+}
+
 #[tracing::instrument(skip(db_conn))]
 pub async fn fetch_events_by_status(
     db_conn: &Connection,
