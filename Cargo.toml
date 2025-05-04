@@ -22,7 +22,7 @@ path = "tools/docker-push.rs"
 chrono = { version = "0.4.40", features = ["serde"] }
 dotenvy = "0.15.7"
 f1-bot-types = { git = "https://codeberg.org/MTO/f1-bot-types", version = "0.1.0" }
-libsql = "0.6.0"
+libsql = "0.9.5"
 notifbot-macros = { git = "https://codeberg.org/MTO/f1-bot-macros", version = "0.1.0" }
 sentry = { version = "0.37.0", features = ["log", "tracing"] }
 serde = { version = "1.0.218", features = ["derive"] }
