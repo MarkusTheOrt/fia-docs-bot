@@ -10,17 +10,7 @@ pub fn main() {
 
     let repo = arg.next_back().unwrap().to_lowercase();
 
-    let tag = Command::new("git")
-        .args(["describe", "--tags", "--abbrev=0"])
-        .output()
-        .expect("Failed to fetch git tag");
-
-    if !tag.status.success() {
-        eprintln!("git tag checking failed");
-        std::process::exit(1);
-    }
-
-    let status = Command::new("docker")
+    if !Command::new("docker")
         .env("DOCKER_BAKE", "1")
         .args([
             "build",
@@ -31,71 +21,60 @@ pub fn main() {
             ".",
         ])
         .status()
-        .expect("Failed to run Docker build");
-
-    if !status.success() {
+        .expect("Failed to run Docker build")
+        .success()
+    {
         eprintln!("Docker build failed!");
         std::process::exit(1);
     }
 
-    let status = Command::new("docker")
+    if !Command::new("docker")
         .args([
             "tag",
             env!("CARGO_PKG_NAME"),
-            &format!(
-                "ghcr.io/{}/{}:{}",
-                repo,
-                env!("CARGO_PKG_NAME"),
-                env!("CARGO_PKG_VERSION")
-            ),
+            &format!("ghcr.io/{}:{}", repo, env!("CARGO_PKG_VERSION")),
         ])
         .status()
-        .expect("Failed to run Docker tag");
-
-    if !status.success() {
-        eprintln!("Docker rename failed!");
-        std::process::exit(1);
-    }
-    let status = Command::new("docker")
-        .args([
-            "tag",
-            env!("CARGO_PKG_NAME"),
-            &format!("ghcr.io/{}/{}:latest", repo, env!("CARGO_PKG_NAME"),),
-        ])
-        .status()
-        .expect("Failed to run Docker tag");
-
-    if !status.success() {
+        .expect("Failed to run Docker tag")
+        .success()
+    {
         eprintln!("Docker rename failed!");
         std::process::exit(1);
     }
 
-    let status = Command::new("docker")
+    if !Command::new("docker")
+        .args([
+            "tag",
+            env!("CARGO_PKG_NAME"),
+            &format!("ghcr.io/{}:latest", repo),
+        ])
+        .status()
+        .expect("Failed to run Docker tag")
+        .success()
+    {
+        eprintln!("Docker rename failed!");
+        std::process::exit(1);
+    }
+
+    if !Command::new("docker")
         .args([
             "push",
-            &format!(
-                "ghcr.io/{}/{}:{}",
-                repo,
-                env!("CARGO_PKG_NAME"),
-                env!("CARGO_PKG_VERSION")
-            ),
+            &format!("ghcr.io/{}:{}", repo, env!("CARGO_PKG_VERSION")),
         ])
         .status()
-        .expect("Failed to run Docker tag");
-
-    if !status.success() {
+        .expect("Failed to run Docker tag")
+        .success()
+    {
         eprintln!("Docker push failed!");
         std::process::exit(1);
     }
-    let status = Command::new("docker")
-        .args([
-            "push",
-            &format!("ghcr.io/{}/{}:latest", repo, env!("CARGO_PKG_NAME"),),
-        ])
-        .status()
-        .expect("Failed to run Docker tag");
 
-    if !status.success() {
+    if !Command::new("docker")
+        .args(["push", &format!("ghcr.io/{}:latest", repo)])
+        .status()
+        .expect("Failed to run Docker tag")
+        .success()
+    {
         eprintln!("Docker push failed!");
         std::process::exit(1);
     }
