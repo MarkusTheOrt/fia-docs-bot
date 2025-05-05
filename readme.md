@@ -1,6 +1,7 @@
 # FIA Documents Bot
 
 [![Build-and-Check](https://github.com/MarkusTheOrt/fia-docs-bot/actions/workflows/build.yml/badge.svg)](https://github.com/MarkusTheOrt/fia-docs-bot/actions/workflows/build.yml)
+[![dependency status](https://deps.rs/repo/github/MarkusTheOrt/fia-docs-bot/status.svg)](https://deps.rs/repo/github/MarkusTheOrt/fia-docs-bot)
 
 A Discord bot that automatically posts new [FIA Documents](https://fia.com/documents)
 to Discord inside a new thread. 
