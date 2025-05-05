@@ -13,6 +13,8 @@ COPY --from=builder /app/target/release/fia-docs-bot /app/fia-docs-bot
 
 RUN chmod +x /app/fia-docs-bot
 
+LABEL org.opencontainers.image.description Posts FIA Documents into Discord
+
 STOPSIGNAL SIGINT
 
 CMD /app/fia-docs-bot
