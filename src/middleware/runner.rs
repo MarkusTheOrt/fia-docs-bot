@@ -29,7 +29,8 @@ use std::{
 use tracing::info;
 
 const F1_DOCS_URL: &str = "https://www.fia.com/documents/championships/fia-formula-one-world-championship-14/season/season-2025-2071";
-const F2_DOCS_URL: &str = "https://www.fia.com/documents/season/season-2025-2071/championships/formula-2-championship-44";
+const F2_DOCS_URL: &str =
+    "https://www.fia.com/documents/season/season-2025-2071/championships/formula-2-championship-44";
 const F3_DOCS_URL: &str = "https://www.fia.com/documents/season/season-2025-2071/championships/fia-formula-3-championship-1012";
 
 struct LocalCache {
@@ -87,10 +88,7 @@ async fn populate_cache(
     Ok(())
 }
 
-pub async fn runner(
-    db_conn: &Connection,
-    should_stop: Arc<AtomicBool>,
-) -> crate::error::Result {
+pub async fn runner(db_conn: &Connection, should_stop: Arc<AtomicBool>) -> crate::error::Result {
     let mut local_cache = LocalCache::default();
 
     tokio::task::yield_now().await;
@@ -133,8 +131,12 @@ async fn create_new_event(
 ) -> crate::error::Result<Event> {
     info!("Running 1");
     let event_title = event.title.as_ref().cloned().unwrap();
-    db_conn.execute("INSERT INTO events (title, year, series, status) VALUES (?, ?, ?, ?)", 
-        params![event_title.clone(), year, series, EventStatus::NotAllowed]).await?;
+    db_conn
+        .execute(
+            "INSERT INTO events (title, year, series, status) VALUES (?, ?, ?, ?)",
+            params![event_title.clone(), year, series, EventStatus::NotAllowed],
+        )
+        .await?;
     info!("inserted event \"{event_title}\"");
     Ok(Event {
         id: db_conn.last_insert_rowid() as u64,
@@ -164,10 +166,7 @@ async fn insert_document(
     Ok(db_conn.last_insert_rowid())
 }
 
-async fn upload_image(
-    data: Vec<u8>,
-    url: &String,
-) -> crate::error::Result<()> {
+async fn upload_image(data: Vec<u8>, url: &String) -> crate::error::Result<()> {
     let data_digest = sha256::digest(data.as_slice());
     let now = Utc::now();
     let mut headers = reqwest::header::HeaderMap::new();
@@ -229,14 +228,13 @@ async fn runner_internal(
         };
 
         for (i, mut doc) in ev.documents.into_iter().enumerate() {
-            
             if should_stop.load(Ordering::Relaxed) {
                 break;
             }
 
-            let tx = sentry::start_transaction(TransactionContext::new("document-parsing", "parser"));
-            let (title, url) =
-                (doc.title.take().unwrap(), doc.url.take().unwrap());
+            let tx =
+                sentry::start_transaction(TransactionContext::new("document-parsing", "parser"));
+            let (title, url) = (doc.title.take().unwrap(), doc.url.take().unwrap());
             sentry::configure_scope(|f| {
                 f.set_tag("Document", &title);
             });
@@ -250,14 +248,9 @@ async fn runner_internal(
             let mirror = upload_mirror(&title, &real_event.title, year, &body)
                 .bind_hub(Hub::current())
                 .await?;
-            let inserted_doc_id = insert_document(
-                db_conn,
-                real_event.id as i64,
-                title.clone(),
-                &url,
-                &mirror,
-            )
-            .await?;
+            let inserted_doc_id =
+                insert_document(db_conn, real_event.id as i64, title.clone(), &url, &mirror)
+                    .await?;
 
             cache.documents.push(Document {
                 title,
@@ -268,9 +261,10 @@ async fn runner_internal(
                 status: f1_bot_types::DocumentStatus::Initial,
                 created_at: Utc::now(),
             });
-            
-            let files =
-                run_magick(file.to_string_lossy(), &format!("doc_{i}")).bind_hub(Hub::current()).await?;
+
+            let files = run_magick(file.to_string_lossy(), &format!("doc_{i}"))
+                .bind_hub(Hub::current())
+                .await?;
 
             // run_magick takes some time to complete, hence we yield here!
             tokio::task::yield_now().await;
@@ -289,8 +283,7 @@ async fn runner_internal(
 
                 upload_image(buf, &url).await?;
 
-                insert_image(db_conn, inserted_doc_id, page_number, url)
-                    .await?;
+                insert_image(db_conn, inserted_doc_id, page_number, url).await?;
             }
             mark_doc_done(inserted_doc_id, db_conn).await?;
             tx.set_status(sentry::protocol::SpanStatus::Ok);
@@ -303,10 +296,7 @@ async fn runner_internal(
     Ok(())
 }
 
-async fn mark_doc_done(
-    doc_id: i64,
-    db_conn: &Connection,
-) -> crate::error::Result {
+async fn mark_doc_done(doc_id: i64, db_conn: &Connection) -> crate::error::Result {
     db_conn
         .execute(
             "UPDATE documents SET status = ? WHERE id = ?",
@@ -380,10 +370,7 @@ async fn upload_mirror(
     Ok(url)
 }
 
-async fn download_file(
-    url: &str,
-    name: &str,
-) -> crate::error::Result<(PathBuf, Vec<u8>)> {
+async fn download_file(url: &str, name: &str) -> crate::error::Result<(PathBuf, Vec<u8>)> {
     let request = reqwest::get(url).await?;
     let mut file = File::create(format!("./tmp/{name}.pdf"))?;
     let body = request.bytes().await?;
@@ -395,10 +382,7 @@ async fn download_file(
     Ok((path, body.to_vec()))
 }
 
-async fn get_season(
-    url: &str,
-    year: i32,
-) -> crate::error::Result<super::parser::Season> {
+async fn get_season(url: &str, year: i32) -> crate::error::Result<super::parser::Season> {
     let request = reqwest::get(url).await?;
     let bytes = request.bytes().await?;
     let mut tendril = ByteTendril::new();
