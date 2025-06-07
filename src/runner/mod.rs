@@ -19,7 +19,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 
 use crate::database::{
-    self, create_message, create_new_thread, fetch_docs_for_event,
+    create_message, create_new_thread, fetch_docs_for_event,
     fetch_events_by_status, fetch_guilds, fetch_images_for_document,
     fetch_thread_for_guild_and_event, mark_doc_done, mark_event_done,
 };
@@ -231,34 +231,34 @@ pub async fn runner(
                 for ((res, _gid), series) in
                     res.chunks(30).zip(ids.chunks(30)).zip(series.chunks(30))
                 {
-                    for ((result, guild_id), series) in
+                    for ((result, _guild_id), _series) in
                         res.iter().zip(_gid).zip(series)
                     {
                         if let Err(why) = result {
                             match why {
                             crate::error::Error::Serenity(e) => match e {
                                 serenity::Error::Model(serenity::all::ModelError::InvalidPermissions { .. }) => {
-                                        if let Err(why) = database::clear_guild_settings(
-                                            db_conn,
-                                            guild_id.to_owned(),
-                                            series.to_owned()).await
-                                        {
-                                            sentry::capture_error(&why);
-                                        }
+                                        // if let Err(why) = database::clear_guild_settings(
+                                        //     db_conn,
+                                        //     guild_id.to_owned(),
+                                        //     series.to_owned()).await
+                                        // {
+                                        //     sentry::capture_error(&why);
+                                        // }
                                 }
-                                serenity::Error::Http(serenity::all::HttpError::UnsuccessfulRequest(e)) => {
-                                    match e.error.code {
-                                        10003 | 50013 => {
-                                        if let Err(why) = database::clear_guild_settings(
-                                            db_conn,
-                                            guild_id.to_owned(),
-                                            series.to_owned()).await
-                                        {
-                                            sentry::capture_error(&why);
-                                        }
-                                            },
-                                        _ => {}
-                                    }
+                                serenity::Error::Http(serenity::all::HttpError::UnsuccessfulRequest(_e)) => {
+                                    // match e.error.code {
+                                    //     10003 | 50013 => {
+                                    //     if let Err(why) = database::clear_guild_settings(
+                                    //         db_conn,
+                                    //         guild_id.to_owned(),
+                                    //         series.to_owned()).await
+                                    //     {
+                                    //         sentry::capture_error(&why);
+                                    //     }
+                                    //         },
+                                    //     _ => {}
+                                    // }
                                 }
                                 _ => {}
                             },
