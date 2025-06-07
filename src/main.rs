@@ -1,4 +1,11 @@
-use std::{error::Error, sync::{atomic::{AtomicBool, Ordering}, Arc}, time::{Duration, Instant}};
+use std::{
+    error::Error,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
 
 use middleware::magick::check_magick;
 use tracing::{error, info};
@@ -13,6 +20,17 @@ mod middleware;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    drop(dotenvy::dotenv());
+
+    let _guard = sentry::init((
+        std::env::var("SENTRY_DSN")?,
+        sentry::ClientOptions {
+            release: sentry::release_name!(),
+            sample_rate: 1.0,
+            ..Default::default()
+        },
+    ));
+
     tracing_subscriber::fmt::init();
 
     if !check_magick() {
@@ -27,8 +45,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         std::process::exit(1);
     }
 
-    drop(dotenvy::dotenv());
-
     let database = libsql::Builder::new_remote(
         std::env::var("DATABASE_URL").expect("Database URL not set"),
         std::env::var("DATABASE_TOKEN").expect("Database Token not set"),
@@ -38,20 +54,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let should_stop = Arc::new(AtomicBool::new(false));
     let st1 = should_stop.clone();
-    
+
     tokio::spawn(async move {
         tokio::signal::ctrl_c().await.unwrap();
         info!("Shutting down.");
         st1.store(true, Ordering::Relaxed);
     });
-    
+
     loop {
         let db_conn = database.connect()?;
         let start = Instant::now();
         if should_stop.load(Ordering::Relaxed) {
             break;
         }
-
 
         let runner = runner(&db_conn, should_stop.clone());
         if let Err(why) = runner.await {
@@ -67,7 +82,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .await;
     }
-
 
     Ok(())
 }
